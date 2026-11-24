@@ -1,0 +1,1494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CAMPuVISE – Campus waste reporting</title>
+  <style>
+/* ===== CAMPuVISE – design system ===== */
+:root {
+  --cream: #faf7ef;
+  --paper: #ffffff;
+  --forest: #1f4d36;
+  --forest-dark: #153826;
+  --lime: #b6e04a;
+  --lime-soft: #eef7cf;
+  --ink: #1d2a22;
+  --muted: #6b7a70;
+  --line: #e7e2d3;
+
+  /* one colour per status */
+  --submitted: #d9822b;
+  --assigned: #3b7dd8;
+  --progress: #8a5cd0;
+  --awaiting: #1f8a8a;
+  --resolved: #2e9b5f;
+  --danger: #c8472f;
+
+  --radius: 14px;
+  --shadow: 0 2px 8px rgba(31, 77, 54, 0.07);
+  --shadow-hover: 0 8px 20px rgba(31, 77, 54, 0.12);
+  --ease: 0.2s ease;
+  --font: ui-rounded, "Nunito", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+body {
+  margin: 0; font-family: var(--font); color: var(--ink); background: var(--cream);
+  line-height: 1.5; min-height: 100vh; display: flex; flex-direction: column;
+}
+h1, h2, h3 { margin: 0; line-height: 1.2; color: var(--forest); }
+h1 { font-size: 1.9rem; }
+h2 { font-size: 1.1rem; margin-bottom: 1rem; }
+h3 { font-size: 0.95rem; margin: 1.25rem 0 0.5rem; }
+p { margin: 0; }
+a { color: inherit; text-decoration: none; }
+img { max-width: 100%; }
+:focus-visible { outline: 3px solid var(--lime); outline-offset: 2px; }
+
+/* ===== Demo strip, top bar, nav ===== */
+.demo-strip {
+  background: var(--forest-dark); color: #dbe8c0; text-align: center;
+  font-size: 0.8rem; padding: 0.35rem 1rem;
+}
+.topbar {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+  padding: 0.75rem 1.5rem; background: var(--cream); border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 0.5rem; font-size: 1.25rem; color: var(--forest); }
+.brand-mark {
+  display: grid; place-items: center; width: 36px; height: 36px; border-radius: 50%;
+  background: var(--lime); transition: transform var(--ease);
+}
+.brand:hover .brand-mark { transform: rotate(-12deg) scale(1.08); }
+.brand-mark.big { width: 64px; height: 64px; font-size: 2rem; margin: 0 auto 1rem; }
+
+.nav { display: flex; gap: 0.25rem; margin: 0 auto; flex-wrap: wrap; }
+.nav-link {
+  font: inherit; font-weight: 600; color: var(--muted); background: none; border: 0; cursor: pointer;
+  padding: 0.5rem 0.9rem; border-radius: 999px; transition: background var(--ease), color var(--ease);
+}
+.nav-link:hover { background: var(--lime-soft); color: var(--forest); }
+.nav-link.active { background: var(--forest); color: #fff; }
+
+.user-chip { display: flex; align-items: center; gap: 0.5rem; }
+.role-tag { background: var(--lime); color: var(--forest-dark); font-size: 0.75rem; font-weight: 800; padding: 0.15rem 0.7rem; border-radius: 999px; }
+.user-name { font-weight: 600; color: var(--forest); max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ===== Layout ===== */
+.container { width: 100%; max-width: 1080px; margin: 0 auto; padding: 2rem 1.5rem; flex: 1; }
+.view { display: none; }
+.view.active { display: block; animation: fadeIn 0.3s ease; }
+.view-head { margin-bottom: 1.5rem; }
+.view-head p { color: var(--muted); margin-top: 0.25rem; }
+
+.stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 1rem; margin-bottom: 1.25rem; }
+.two-col { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 1.25rem; }
+.two-col + .two-col, .two-col + .section-gap { margin-top: 1.25rem; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1rem; }
+.list { display: flex; flex-direction: column; gap: 0.75rem; }
+.section-title { margin: 1.75rem 0 0.75rem; font-size: 1.15rem; color: var(--forest); }
+.footer { text-align: center; color: var(--muted); font-size: 0.85rem; padding: 1.5rem; }
+.link-btn { background: none; border: 0; padding: 0; font: inherit; color: var(--forest); text-decoration: underline; cursor: pointer; }
+.hint, .note-line { color: var(--muted); font-size: 0.85rem; }
+.note-line { margin-top: 1rem; }
+
+/* ===== Login ===== */
+.login-head { text-align: center; margin: 1rem 0 2rem; }
+.login-head p { color: var(--muted); margin-top: 0.4rem; }
+.role-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 1.25rem; }
+.role-card { display: flex; flex-direction: column; gap: 0.75rem; }
+.role-card h2 { margin: 0; }
+.role-card .btn { margin-top: auto; }
+.role-icon { font-size: 2rem; }
+.demo-note { text-align: center; color: var(--muted); margin-top: 1.5rem; font-size: 0.9rem; }
+
+/* ===== Hero (top of each dashboard) ===== */
+.hero {
+  position: relative; overflow: hidden; margin-bottom: 1.25rem;
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;
+  background: var(--forest); color: #fff; border-radius: var(--radius); padding: 1.75rem;
+}
+.hero::after {
+  content: ""; position: absolute; right: -40px; top: -50px; width: 190px; height: 190px;
+  border-radius: 50%; background: var(--lime); opacity: 0.16; pointer-events: none;
+}
+.hero h1 { color: #fff; }
+.hero p { color: #cfe2d3; margin-top: 0.3rem; }
+.hero .btn { position: relative; z-index: 1; }
+
+/* ===== Cards ===== */
+.card {
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius);
+  padding: 1.25rem; box-shadow: var(--shadow);
+}
+.card.hoverable, .stat-card, .report-card { transition: transform var(--ease), box-shadow var(--ease); }
+.card.hoverable:hover, .stat-card:hover, .report-card:hover { transform: translateY(-3px); box-shadow: var(--shadow-hover); }
+
+.stat-card { background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius); padding: 1rem 1.25rem; box-shadow: var(--shadow); }
+.stat-value { font-size: 2rem; font-weight: 800; color: var(--forest); line-height: 1.2; }
+.stat-label { color: var(--muted); font-size: 0.9rem; }
+.stat-card.accent { background: var(--lime); border-color: var(--lime); }
+.stat-card.accent .stat-label { color: var(--forest-dark); }
+.stat-card.alert { border-color: #f0cfa5; background: #fdf3e5; }
+.stat-card.alert .stat-value { color: var(--submitted); }
+
+.report-card { cursor: pointer; display: flex; flex-direction: column; gap: 0.5rem; }
+.report-card > img { width: 100%; height: 140px; object-fit: cover; border-radius: 10px; }
+.card-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.25rem; }
+.verify-card { display: flex; flex-direction: column; gap: 0.75rem; }
+.verify-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.75rem; flex-wrap: wrap; }
+
+.list-item { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.75rem 0; border-bottom: 1px solid var(--line); }
+.list-item:last-child { border-bottom: 0; }
+.list-item.clickable { cursor: pointer; padding: 0.75rem 0.6rem; margin: 0 -0.6rem; border-radius: 10px; transition: background var(--ease); }
+.list-item.clickable:hover { background: var(--lime-soft); }
+.item-right { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; justify-content: flex-end; }
+.meta { color: var(--muted); font-size: 0.85rem; }
+.note { padding: 0.6rem 0.8rem; border-radius: 10px; background: var(--lime-soft); font-size: 0.9rem; }
+.note.warn { background: #fbe9d4; color: #8a4a0f; }
+
+/* ===== Empty states ===== */
+.empty { text-align: center; padding: 2rem 1rem; color: var(--muted); grid-column: 1 / -1; }
+.empty-icon { font-size: 2.2rem; margin-bottom: 0.4rem; }
+.empty strong { display: block; color: var(--forest); font-size: 1.05rem; }
+.empty p { margin: 0.3rem 0 1rem; }
+
+/* ===== Buttons ===== */
+.btn {
+  font: inherit; font-weight: 700; cursor: pointer; padding: 0.65rem 1.25rem; border-radius: 999px;
+  border: 2px solid transparent; transition: transform var(--ease), background var(--ease), box-shadow var(--ease);
+}
+.btn:hover { transform: translateY(-2px); }
+.btn:active { transform: translateY(0) scale(0.97); }
+.btn-primary { background: var(--lime); color: var(--forest-dark); }
+.btn-primary:hover { box-shadow: 0 6px 14px rgba(182, 224, 74, 0.5); }
+.btn-dark { background: var(--forest); color: #fff; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-ghost { background: transparent; color: var(--forest); border-color: var(--line); }
+.btn-ghost:hover { border-color: var(--forest); }
+.btn-sm { padding: 0.4rem 0.9rem; font-size: 0.85rem; }
+
+/* ===== Forms ===== */
+.form { display: flex; flex-direction: column; gap: 1rem; max-width: 760px; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+.field { display: flex; flex-direction: column; gap: 0.35rem; }
+.field > span { font-weight: 600; font-size: 0.9rem; color: var(--forest); }
+input, select, textarea {
+  font: inherit; color: var(--ink); width: 100%; padding: 0.65rem 0.8rem;
+  background: var(--cream); border: 2px solid var(--line); border-radius: 10px;
+  transition: border-color var(--ease), background var(--ease);
+}
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--forest); background: #fff; }
+textarea { resize: vertical; }
+.field.invalid input, .field.invalid select, .field.invalid textarea { border-color: var(--danger); }
+.error-text { color: var(--danger); font-size: 0.8rem; }
+
+.upload {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.75rem;
+  padding: 1.25rem; cursor: pointer; text-align: center; color: var(--muted);
+  border: 2px dashed var(--line); border-radius: var(--radius); transition: border-color var(--ease), background var(--ease);
+}
+.upload:hover { border-color: var(--forest); background: var(--lime-soft); }
+.preview { max-height: 200px; border-radius: 10px; object-fit: cover; }
+.form-actions { display: flex; justify-content: flex-end; gap: 0.75rem; }
+
+.toolbar { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 0.75rem; margin-bottom: 1.25rem; padding: 1rem; }
+.toolbar.toolbar-3 { grid-template-columns: 2fr 1fr 1fr; }
+
+/* ===== Badges ===== */
+.badge { display: inline-block; padding: 0.15rem 0.7rem; border-radius: 999px; font-size: 0.78rem; font-weight: 700; white-space: nowrap; background: var(--lime-soft); color: var(--forest); }
+.badge.submitted { background: #fbe9d4; color: var(--submitted); }
+.badge.assigned { background: #dce9fa; color: var(--assigned); }
+.badge.in-progress { background: #eadff8; color: var(--progress); }
+.badge.awaiting { background: #d6efef; color: var(--awaiting); }
+.badge.resolved { background: #d8f0e2; color: var(--resolved); }
+.badge.high { background: #f8dcd5; color: var(--danger); }
+.badge.medium { background: #fbf0cc; color: #8a6d0a; }
+.badge.low { background: var(--lime-soft); color: var(--forest); }
+.badge.demo { background: #eceae2; color: var(--muted); font-weight: 600; }
+
+/* ===== Status steps (5 segments) ===== */
+.steps { display: flex; gap: 4px; }
+.step { flex: 1; height: 6px; border-radius: 999px; background: var(--line); }
+.step.done { background: var(--forest); }
+.step.current { background: var(--lime); box-shadow: 0 0 0 2px var(--lime-soft); }
+
+/* ===== Photos ===== */
+.photos { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 0.5rem; margin-bottom: 1rem; }
+.photo { position: relative; margin: 0; }
+.photo img { width: 100%; height: 130px; object-fit: cover; border-radius: 10px; display: block; }
+.photo span { position: absolute; left: 6px; top: 6px; background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 0.7rem; padding: 0.1rem 0.55rem; border-radius: 999px; }
+.photo.no-photo { height: 130px; display: grid; place-items: center; border: 2px dashed var(--line); border-radius: 10px; color: var(--muted); font-size: 0.85rem; }
+
+/* ===== Timeline (report history) ===== */
+.timeline { list-style: none; margin: 0.5rem 0 0; padding: 0; }
+.timeline li { position: relative; margin-left: 0.4rem; padding: 0 0 0.8rem 1.2rem; border-left: 2px solid var(--line); font-size: 0.9rem; }
+.timeline li::before { content: ""; position: absolute; left: -6px; top: 0.35rem; width: 10px; height: 10px; border-radius: 50%; background: var(--forest); }
+.timeline li:last-child { border-color: transparent; padding-bottom: 0; }
+
+/* ===== Charts ===== */
+.bar-row { display: grid; grid-template-columns: 140px 1fr 32px; align-items: center; gap: 0.75rem; margin-bottom: 0.6rem; font-size: 0.9rem; }
+.bar-track { height: 10px; background: var(--lime-soft); border-radius: 999px; overflow: hidden; }
+.bar-fill { height: 100%; width: 0; background: var(--forest); border-radius: 999px; transition: width 0.6s ease; }
+.bar-fill.hot { background: var(--danger); }
+.hotspot-banner { background: #fbe9d4; border: 1px solid #f0cfa5; color: #8a4a0f; border-radius: var(--radius); padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
+.calm-banner { background: var(--lime-soft); border-color: #dcebaa; color: var(--forest); }
+
+.ring-wrap { display: flex; flex-direction: column; align-items: center; gap: 0.75rem; }
+.ring { width: 130px; height: 130px; border-radius: 50%; display: grid; place-items: center; background: conic-gradient(var(--resolved) calc(var(--pct) * 1%), var(--lime-soft) 0); }
+.ring-inner { width: 96px; height: 96px; border-radius: 50%; background: #fff; display: grid; place-items: center; font-size: 1.5rem; font-weight: 800; color: var(--forest); }
+
+/* ===== Modal ===== */
+.modal-backdrop { position: fixed; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; padding: 1rem; background: rgba(21, 56, 38, 0.45); animation: fadeIn 0.2s ease; }
+.modal { position: relative; width: 100%; max-width: 560px; max-height: 90vh; overflow-y: auto; background: var(--paper); border-radius: var(--radius); padding: 1.75rem; box-shadow: var(--shadow-hover); animation: pop 0.25s ease; }
+.modal h2 { margin-bottom: 1rem; font-size: 1.3rem; }
+.modal p { margin-bottom: 0.75rem; }
+.modal-close { position: absolute; top: 0.75rem; right: 0.9rem; font-size: 1.6rem; line-height: 1; color: var(--muted); background: none; border: 0; cursor: pointer; transition: color var(--ease), transform var(--ease); }
+.modal-close:hover { color: var(--forest); transform: rotate(90deg); }
+.modal-actions { display: flex; justify-content: flex-end; gap: 0.75rem; margin-top: 1.25rem; flex-wrap: wrap; }
+.badges { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+
+/* ===== Toasts ===== */
+.toasts { position: fixed; bottom: 1.25rem; right: 1.25rem; z-index: 60; display: flex; flex-direction: column; gap: 0.5rem; }
+.toast { background: var(--forest); color: #fff; padding: 0.75rem 1.1rem; border-radius: 12px; box-shadow: var(--shadow-hover); font-weight: 600; border-left: 5px solid var(--lime); animation: slideIn 0.3s ease; }
+.toast.error { border-left-color: var(--danger); }
+.toast.hide { opacity: 0; transform: translateX(20px); transition: var(--ease); }
+
+/* ===== Animations ===== */
+.grid > *, .list > *, .stats-grid > * { animation: fadeIn 0.35s ease both; }
+.grid > :nth-child(2), .stats-grid > :nth-child(2) { animation-delay: 0.05s; }
+.grid > :nth-child(3), .stats-grid > :nth-child(3) { animation-delay: 0.1s; }
+.grid > :nth-child(4), .stats-grid > :nth-child(4) { animation-delay: 0.15s; }
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes pop { from { opacity: 0; transform: scale(0.94); } to { opacity: 1; transform: none; } }
+@keyframes slideIn { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+/* ===== Responsive ===== */
+@media (max-width: 760px) {
+  .topbar { padding: 0.6rem 1rem; gap: 0.5rem 0.75rem; }
+  .user-chip { margin-left: auto; }
+  .user-name { display: none; }
+  .brand { font-size: 1.1rem; }
+  .role-tag { font-size: 0.7rem; padding: 0.1rem 0.55rem; }
+  .user-chip .btn-sm { padding: 0.3rem 0.7rem; }
+  .nav { order: 3; width: 100%; margin: 0; overflow-x: auto; flex-wrap: nowrap; padding-bottom: 0.25rem; }
+  .nav-link { white-space: nowrap; }
+  .container { padding: 1.25rem 1rem; }
+  h1 { font-size: 1.5rem; }
+  .hero { padding: 1.25rem; }
+  .toolbar, .toolbar.toolbar-3 { grid-template-columns: 1fr; }
+  .bar-row { grid-template-columns: 110px 1fr 28px; }
+  .form-actions .btn, .modal-actions .btn { flex: 1; }
+  .toasts { left: 1rem; right: 1rem; bottom: 1rem; }
+  .modal { padding: 1.25rem; }
+}
+
+</style>
+</head>
+<body>
+
+  <!-- Always visible: this is a demo -->
+  <div class="demo-strip">Demo mode · demo login only · reports are saved in this browser, not on a server</div>
+
+  <!-- Header: nav buttons are built by script.js for each role -->
+  <header class="topbar" id="topbar" hidden>
+    <a class="brand" href="#dashboard" data-nav="dashboard">
+      <span class="brand-mark">🌱</span>
+      <span class="brand-name">CAMPu<strong>VISE</strong></span>
+    </a>
+    <nav class="nav" id="nav" aria-label="Main"></nav>
+    <div class="user-chip">
+      <span class="role-tag" id="roleTag"></span>
+      <span class="user-name" id="userName"></span>
+      <button class="btn btn-ghost btn-sm" id="logoutBtn">Log out</button>
+    </div>
+  </header>
+
+  <main class="container">
+
+    <!-- Demo login -->
+    <section id="login" class="view">
+      <div class="login-head">
+        <span class="brand-mark big">🌱</span>
+        <h1>Welcome to CAMPuVISE</h1>
+        <p>Report campus waste, follow the cleanup, keep every corner clean.</p>
+      </div>
+
+      <div class="role-grid">
+        <form class="card role-card hoverable" id="studentLogin">
+          <div class="role-icon">🎓</div>
+          <h2>Student</h2>
+          <p class="meta">Report waste and track your reports.</p>
+          <label class="field"><span>Your name</span>
+            <input type="text" id="studentName" value="Demo Student" maxlength="30">
+          </label>
+          <button type="submit" class="btn btn-primary">Enter as student</button>
+        </form>
+
+        <form class="card role-card hoverable" id="cleanerLogin">
+          <div class="role-icon">🧹</div>
+          <h2>Cleaner</h2>
+          <p class="meta">See assigned tasks and submit your cleanup.</p>
+          <label class="field"><span>Choose cleaner</span>
+            <select id="cleanerSelect"></select>
+          </label>
+          <button type="submit" class="btn btn-primary">Enter as cleaner</button>
+        </form>
+
+        <form class="card role-card hoverable" id="adminLogin">
+          <div class="role-icon">🛠️</div>
+          <h2>Administrator</h2>
+          <p class="meta">Assign cleaners, verify work and view analytics.</p>
+          <button type="submit" class="btn btn-primary">Enter as administrator</button>
+        </form>
+      </div>
+
+      <p class="demo-note">This is a demo login: there are no passwords or real accounts. Everything is stored only in this browser.</p>
+    </section>
+
+    <!-- Dashboard (content depends on the role) -->
+    <section id="dashboard" class="view">
+      <div id="dashboardContent"></div>
+    </section>
+
+    <!-- Student: report waste -->
+    <section id="report" class="view">
+      <div class="view-head">
+        <h1>Report waste</h1>
+        <p>Spotted something? Tell us where so it can be cleaned up.</p>
+      </div>
+
+      <form id="reportForm" class="card form" novalidate>
+        <div class="form-grid">
+          <label class="field">
+            <span>Campus location *</span>
+            <select id="location" required><option value="">Choose a location</option></select>
+          </label>
+          <label class="field">
+            <span>Waste category *</span>
+            <select id="wasteType" required><option value="">Choose a category</option></select>
+          </label>
+          <label class="field">
+            <span>Severity *</span>
+            <select id="severity" required><option value="">Choose severity</option></select>
+          </label>
+          <label class="field">
+            <span>Floor (optional)</span>
+            <input type="text" id="floor" placeholder="e.g. 2nd">
+          </label>
+          <label class="field">
+            <span>Room number (optional)</span>
+            <input type="text" id="room" placeholder="e.g. Lab 204">
+          </label>
+          <label class="field">
+            <span>Landmark (optional)</span>
+            <input type="text" id="landmark" placeholder="e.g. Near the vending machine">
+          </label>
+        </div>
+        <p class="hint">A landmark is required if you choose "Other campus area".</p>
+
+        <label class="field">
+          <span>Description *</span>
+          <textarea id="description" rows="3" placeholder="What did you see?" required></textarea>
+        </label>
+
+        <div class="field">
+          <span>Photo (optional)</span>
+          <label class="upload" for="image">
+            <input type="file" id="image" accept="image/*" hidden>
+            <span class="upload-text">Click to add a photo</span>
+            <img class="preview" alt="Photo preview" hidden>
+          </label>
+        </div>
+
+        <div class="form-actions">
+          <button type="reset" class="btn btn-ghost">Clear</button>
+          <button type="submit" class="btn btn-primary">Submit report</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Student: my reports / Administrator: all active reports -->
+    <section id="reports" class="view">
+      <div class="view-head">
+        <h1 id="reportsTitle">Reports</h1>
+        <p id="reportsSub"></p>
+      </div>
+      <div class="toolbar card">
+        <input type="search" id="reportsSearch" placeholder="Search reports…">
+        <select id="reportsLocation"><option value="">All locations</option></select>
+        <select id="reportsWaste"><option value="">All categories</option></select>
+        <select id="reportsStatus"><option value="">All statuses</option></select>
+      </div>
+      <div id="reportsList" class="grid"></div>
+    </section>
+
+    <!-- Administrator: verify completed cleanups -->
+    <section id="verify" class="view">
+      <div class="view-head">
+        <h1>Verify cleanups</h1>
+        <p>Check the cleaner's photos and either approve the work or send it back.</p>
+      </div>
+      <div id="verifyList" class="list"></div>
+    </section>
+
+    <!-- Administrator: analytics -->
+    <section id="analytics" class="view">
+      <div class="view-head">
+        <h1>Analytics</h1>
+        <p>What is being reported, where, and how much is resolved.</p>
+      </div>
+      <div class="stats-grid" id="analyticsStats"></div>
+      <div id="hotspotBanner"></div>
+      <div class="two-col">
+        <div class="card"><h2>Waste categories</h2><div id="categoryStats"></div></div>
+        <div class="card"><h2>Reports by location</h2><div id="locationStats"></div></div>
+      </div>
+      <div class="two-col">
+        <div class="card"><h2>Status breakdown</h2><div id="statusStats"></div></div>
+        <div class="card"><h2>Resolution rate</h2><div id="resolutionRing"></div></div>
+      </div>
+      <p class="meta note-line" id="analyticsNote"></p>
+    </section>
+
+    <!-- Archive: resolved reports (scoped by role) -->
+    <section id="archive" class="view">
+      <div class="view-head">
+        <h1>Archive</h1>
+        <p>Resolved reports are kept here for reference.</p>
+      </div>
+      <div class="toolbar card toolbar-3">
+        <input type="search" id="archiveSearch" placeholder="Search archive…">
+        <select id="archiveLocation"><option value="">All locations</option></select>
+        <select id="archiveWaste"><option value="">All categories</option></select>
+      </div>
+      <div id="archiveList" class="grid"></div>
+    </section>
+
+  </main>
+
+  <footer class="footer">
+    CAMPuVISE · demo frontend, browser-only storage ·
+    <button class="link-btn" id="resetBtn">Reset demo data</button>
+  </footer>
+
+  <!-- Shared modal (details, assign, complete, rework, reset) -->
+  <div class="modal-backdrop" id="modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <button class="modal-close" id="modalClose" aria-label="Close">×</button>
+      <h2 id="modalTitle"></h2>
+      <div id="modalBody"></div>
+      <div class="modal-actions" id="modalActions"></div>
+    </div>
+  </div>
+
+  <!-- Toast notifications -->
+  <div class="toasts" id="toasts" aria-live="polite"></div>
+
+  <script>
+/* ===== CAMPuVISE – script.js =====
+   DEMO FRONTEND: the login is a demo (no passwords) and all data is saved
+   in this browser's localStorage. Nothing is sent to a server.
+
+   The file has 5 parts:
+   1. Constants        4. Helpers
+   2. Storage          5. Screens (UI) and event handling
+   3. api (report rules)
+
+   To connect a real backend later, only parts 2 and 3 need to change:
+   replace the inside of each api function with a fetch() call. */
+
+/* ---------- 1. Constants ---------- */
+const LOCATIONS = ["Building 1", "Building 2", "Canteen", "Amphitheatre", "Auditorium", "Other campus area"];
+const WASTE_TYPES = ["Plastic", "General Waste", "Food Waste", "Liquid Spill", "Chemical Spill", "E-waste", "Other"];
+const SEVERITIES = ["Low", "Medium", "High"];
+const CLEANERS = ["Ramesh", "Suresh", "Anita", "Priya"]; // demo cleaners
+const HOTSPOT_LIMIT = 5; // reports at one location that make it a hotspot
+
+// Report status flow. Each status lists the statuses it may move to next.
+const STATUSES = ["Submitted", "Assigned", "In Progress", "Awaiting Verification", "Resolved"];
+const ALLOWED_NEXT = {
+  "Submitted": ["Assigned"],
+  "Assigned": ["In Progress"],
+  "In Progress": ["Awaiting Verification"],
+  "Awaiting Verification": ["Resolved", "In Progress"], // In Progress = rework requested
+  "Resolved": []
+};
+
+const STATUS_CLASS = {
+  "Submitted": "submitted", "Assigned": "assigned", "In Progress": "in-progress",
+  "Awaiting Verification": "awaiting", "Resolved": "resolved"
+};
+
+// What each role can see in the navigation: [view id, label]
+const ROLES = {
+  student: { label: "Student", nav: [["dashboard", "Dashboard"], ["report", "Report waste"], ["reports", "My reports"], ["archive", "Archive"]] },
+  cleaner: { label: "Cleaner", nav: [["dashboard", "My tasks"], ["archive", "Completed"]] },
+  admin: { label: "Administrator", nav: [["dashboard", "Dashboard"], ["reports", "Reports"], ["verify", "Verify"], ["analytics", "Analytics"], ["archive", "Archive"]] }
+};
+
+const REPORTS_KEY = "campuvise_v2_reports";
+const SESSION_KEY = "campuvise_v2_session";
+
+let session = null; // { role, name } of the person using the demo
+
+/* ---------- 2. Storage (browser only) ----------
+   The only place that touches localStorage. */
+const storage = {
+  readReports() {
+    const raw = localStorage.getItem(REPORTS_KEY);
+    return raw ? JSON.parse(raw) : null;
+  },
+  writeReports(list) {
+    localStorage.setItem(REPORTS_KEY, JSON.stringify(list));
+  },
+  readSession() {
+    try {
+      const s = JSON.parse(localStorage.getItem(SESSION_KEY));
+      return s && ROLES[s.role] && s.name ? s : null;
+    } catch { return null; }
+  },
+  writeSession(s) { localStorage.setItem(SESSION_KEY, JSON.stringify(s)); },
+  clearSession() { localStorage.removeItem(SESSION_KEY); }
+};
+
+/* ---------- 3. api: report operations and workflow rules ----------
+   No HTML in here. Each function returns a Promise so it can later become
+   a fetch() call (for example POST /api/reports) without changing the screens.
+   Note: a real backend must also check the user's role; this demo does not. */
+const api = {
+  async getReports() {
+    let list = storage.readReports();
+    if (!list) {
+      list = sampleReports();
+      storage.writeReports(list);
+    }
+    return list;
+  },
+
+  // Student submits a new report
+  async createReport(data, user) {
+    if (!data.location || !data.wasteType || !data.severity || !data.description) {
+      throw new Error("Please fill in all required fields");
+    }
+    const reports = await api.getReports();
+    const now = Date.now();
+    const report = {
+      id: nextId(reports),
+      location: data.location, floor: data.floor, room: data.room, landmark: data.landmark,
+      wasteType: data.wasteType, severity: data.severity, description: data.description,
+      image: data.image || null, beforeImage: null, afterImage: null,
+      status: "Submitted", reportedBy: user.name, assignedTo: "",
+      completionNote: "", reworkNote: "",
+      createdAt: now, updatedAt: now, resolvedAt: null, isDemo: false,
+      history: [{ text: "Report submitted", by: user.name, at: now }]
+    };
+    reports.unshift(report);
+    storage.writeReports(reports);
+    return report;
+  },
+
+  // Administrator assigns (or reassigns) a cleaner
+  async assignReport(id, cleaner, adminName) {
+    return edit(id, (r) => {
+      if (!CLEANERS.includes(cleaner)) throw new Error("Choose a cleaner");
+      if (r.status === "Submitted") {
+        changeStatus(r, "Assigned", adminName, "Assigned to " + cleaner);
+      } else if (r.status === "Assigned") {
+        addHistory(r, "Reassigned to " + cleaner, adminName);
+      } else {
+        throw new Error("Only reports that haven't started can be assigned");
+      }
+      r.assignedTo = cleaner;
+    });
+  },
+
+  // Cleaner accepts and starts an assigned task
+  async startTask(id, cleanerName) {
+    return edit(id, (r) => {
+      if (r.assignedTo !== cleanerName) throw new Error("This task is not assigned to you");
+      changeStatus(r, "In Progress", cleanerName, "Cleaning started");
+    });
+  },
+
+  // Cleaner submits finished work for verification
+  async completeTask(id, cleanerName, { beforeImage, afterImage, note }) {
+    return edit(id, (r) => {
+      if (r.assignedTo !== cleanerName) throw new Error("This task is not assigned to you");
+      if (!afterImage) throw new Error("Add an 'after' photo");
+      if (!note) throw new Error("Add a completion note");
+      r.beforeImage = beforeImage || r.beforeImage;
+      r.afterImage = afterImage;
+      r.completionNote = note;
+      r.reworkNote = "";
+      changeStatus(r, "Awaiting Verification", cleanerName, "Submitted for verification");
+    });
+  },
+
+  // Administrator approves: report becomes Resolved (archived)
+  async approveReport(id, adminName) {
+    return edit(id, (r) => {
+      changeStatus(r, "Resolved", adminName, "Approved and archived");
+      r.resolvedAt = Date.now();
+    });
+  },
+
+  // Administrator sends it back: report returns to In Progress
+  async requestRework(id, adminName, reason) {
+    return edit(id, (r) => {
+      if (!reason) throw new Error("Explain what needs to be redone");
+      r.reworkNote = reason;
+      r.afterImage = null;
+      changeStatus(r, "In Progress", adminName, "Rework requested: " + reason);
+    });
+  },
+
+  // Demo tools
+  async resetDemoData() { storage.writeReports(sampleReports()); },
+  async deleteAllReports() { storage.writeReports([]); }
+};
+
+// Load one report, let `change` modify it, then save everything
+async function edit(id, change) {
+  const reports = await api.getReports();
+  const report = reports.find(r => r.id === id);
+  if (!report) throw new Error("Report not found");
+  change(report);
+  report.updatedAt = Date.now();
+  storage.writeReports(reports);
+  return report;
+}
+
+function addHistory(report, text, by) {
+  report.history.push({ text, by, at: Date.now() });
+}
+
+// The single place that enforces the status flow
+function changeStatus(report, newStatus, by, text) {
+  if (!ALLOWED_NEXT[report.status].includes(newStatus)) {
+    throw new Error("A " + report.status + " report can't move to " + newStatus);
+  }
+  report.status = newStatus;
+  addHistory(report, text, by);
+}
+
+// Unique, readable IDs: CV-1009, CV-1010, ...
+function nextId(reports) {
+  const max = reports.reduce((m, r) => Math.max(m, parseInt(r.id.split("-")[1], 10) || 0), 1000);
+  return "CV-" + (max + 1);
+}
+
+/* ---------- Sample (demo) reports ----------
+   Clearly marked isDemo so they show a "Demo" tag in the app. */
+function sampleReports() {
+  const H = 3600000, now = Date.now();
+  const steps = [
+    ["Report submitted", "Demo Student"], ["Assigned to ", "Administrator"], ["Cleaning started", ""],
+    ["Submitted for verification", ""], ["Approved and archived", "Administrator"]
+  ];
+  const make = (num, hoursAgo, location, floor, room, landmark, wasteType, severity, description, status, cleaner, note) => {
+    const createdAt = now - hoursAgo * H;
+    const upTo = STATUSES.indexOf(status) + 1;
+    const history = steps.slice(0, upTo).map((s, i) => ({
+      text: i === 1 ? s[0] + cleaner : s[0], by: s[1] || cleaner, at: createdAt + i * 1800000
+    }));
+    return {
+      id: "CV-" + num, location, floor, room, landmark, wasteType, severity, description,
+      image: null, beforeImage: null, afterImage: null, status, reportedBy: "Demo Student",
+      assignedTo: cleaner, completionNote: note || "", reworkNote: "",
+      createdAt, updatedAt: createdAt, resolvedAt: status === "Resolved" ? createdAt + 4 * 1800000 : null,
+      isDemo: true, history
+    };
+  };
+  return [
+    make(1008, 1, "Canteen", "", "", "Near the water cooler", "Food Waste", "Low", "Leftover food near the water cooler.", "Submitted", ""),
+    make(1007, 3, "Building 2", "2nd", "Lab 204", "Back corner of the lab", "E-waste", "Medium", "Old keyboards and cables dumped in the corner.", "Submitted", ""),
+    make(1006, 5, "Canteen", "", "", "Next to the billing counter", "Liquid Spill", "Medium", "Juice spilled near the billing counter.", "Submitted", ""),
+    make(1005, 8, "Canteen", "", "", "Near the exit", "Plastic", "Low", "Plastic cups left near the exit.", "Assigned", "Ramesh"),
+    make(1004, 14, "Building 1", "1st", "", "Beside the vending machine", "Plastic", "Medium", "Empty bottles piled up next to the bin.", "In Progress", "Anita"),
+    make(1003, 20, "Canteen", "", "", "Tables near the window", "Food Waste", "Medium", "Food scraps left on tables after lunch.", "Awaiting Verification", "Suresh", "Tables cleared and wiped."),
+    make(1002, 60, "Canteen", "", "", "Beside the dish return", "Food Waste", "High", "Overflowing food bin attracting flies.", "Resolved", "Suresh", "Bin emptied and disinfected."),
+    make(1001, 72, "Auditorium", "Ground", "", "Main entrance lobby", "Liquid Spill", "High", "Water spill near the entrance, floor was slippery.", "Resolved", "Ramesh", "Mopped and dried; wet-floor sign placed.")
+  ];
+}
+
+/* ---------- 4. Helpers ---------- */
+const $ = (selector) => document.querySelector(selector);
+const $$ = (selector) => document.querySelectorAll(selector);
+
+// Escape text before putting it into innerHTML
+function esc(text) {
+  const div = document.createElement("div");
+  div.textContent = text ?? "";
+  return div.innerHTML;
+}
+
+function timeAgo(timestamp) {
+  const minutes = Math.floor((Date.now() - timestamp) / 60000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return minutes + " min ago";
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return hours + " hr ago";
+  const days = Math.floor(hours / 24);
+  return days + (days === 1 ? " day ago" : " days ago");
+}
+
+function fmtDate(timestamp) {
+  return new Date(timestamp).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+}
+
+function showToast(message, type = "success") {
+  const toast = document.createElement("div");
+  toast.className = "toast " + (type === "error" ? "error" : "");
+  toast.textContent = message;
+  $("#toasts").appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add("hide");
+    setTimeout(() => toast.remove(), 300);
+  }, 3200);
+}
+
+function fillSelect(selector, items) {
+  $(selector).insertAdjacentHTML("beforeend", items.map(i => `<option>${esc(i)}</option>`).join(""));
+}
+
+function emptyState(icon, title, text, button = "") {
+  return `<div class="empty"><div class="empty-icon">${icon}</div><strong>${title}</strong><p>${text}</p>${button}</div>`;
+}
+
+function statCard(value, label, extra = "") {
+  return `<div class="stat-card ${extra}"><div class="stat-value">${value}</div><div class="stat-label">${label}</div></div>`;
+}
+
+function hero(title, text, buttonHTML = "") {
+  return `<div class="hero"><div><h1>${title}</h1><p>${text}</p></div>${buttonHTML}</div>`;
+}
+
+const statusBadge = (r) => `<span class="badge ${STATUS_CLASS[r.status]}">${esc(r.status)}</span>`;
+const severityBadge = (r) => `<span class="badge ${r.severity.toLowerCase()}">${esc(r.severity)} severity</span>`;
+const demoTag = (r) => (r.isDemo ? `<span class="badge demo">Demo</span>` : "");
+const placeOf = (r) => [r.floor, r.room, r.landmark].filter(Boolean).join(" · ");
+
+// 5 small segments showing how far the report has come
+function stepsHTML(status) {
+  const index = STATUSES.indexOf(status);
+  return `<div class="steps" title="${esc(status)}">` + STATUSES.map((s, i) => {
+    const cls = status === "Resolved" || i < index ? "done" : i === index ? "current" : "";
+    return `<span class="step ${cls}"></span>`;
+  }).join("") + `</div>`;
+}
+
+// Reported / Before / After photos. showEmpty adds "No photo" boxes for Before and After.
+function photosHTML(r, showEmpty = false) {
+  const items = [["Reported", r.image], ["Before", r.beforeImage], ["After", r.afterImage]]
+    .filter(([label, src]) => src || (showEmpty && label !== "Reported"));
+  if (!items.length) return "";
+  return `<div class="photos">` + items.map(([label, src]) => src
+    ? `<figure class="photo"><img src="${src}" alt="${label} photo"><span>${label}</span></figure>`
+    : `<div class="photo no-photo">${label}: no photo</div>`).join("") + `</div>`;
+}
+
+// Which reports the logged-in person is allowed to see
+function scopeReports(all) {
+  if (session.role === "student") return all.filter(r => r.reportedBy === session.name);
+  if (session.role === "cleaner") return all.filter(r => r.assignedTo === session.name);
+  return all;
+}
+
+function countBy(list, field, names) {
+  return names.map(name => ({ name, count: list.filter(r => r[field] === name).length }));
+}
+
+// Locations with 5+ reports (all reports, archived ones included)
+function hotspotsOf(reports) {
+  return countBy(reports, "location", LOCATIONS).filter(l => l.count >= HOTSPOT_LIMIT);
+}
+
+function hotspotBanner(hotspots) {
+  return hotspots.length
+    ? `<div class="hotspot-banner"><strong>🔥 Hotspot${hotspots.length > 1 ? "s" : ""}:</strong>
+        ${hotspots.map(h => `${esc(h.name)} (${h.count} reports)`).join(", ")}.
+        Consider more bins or more frequent cleaning there.</div>`
+    : `<div class="hotspot-banner calm-banner">No hotspots right now. A location becomes a hotspot at ${HOTSPOT_LIMIT} reports.</div>`;
+}
+
+function barRows(items, isHot) {
+  const max = Math.max(1, ...items.map(i => i.count));
+  return items.map(i => `
+    <div class="bar-row">
+      <span>${esc(i.name)}</span>
+      <div class="bar-track"><div class="bar-fill ${isHot && isHot(i) ? "hot" : ""}" data-width="${(i.count / max) * 100}"></div></div>
+      <span>${i.count}</span>
+    </div>`).join("");
+}
+
+// Short delay so the bars grow with a transition
+function animateBars(containerSelector) {
+  setTimeout(() => {
+    $$(containerSelector + " .bar-fill").forEach(bar => bar.style.width = bar.dataset.width + "%");
+  }, 30);
+}
+
+// Shrink photos so they fit in localStorage
+function resizeImage(file, maxSize = 700) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = reject;
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = reject;
+      img.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+        const ctx = canvas.getContext("2d");
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", 0.7));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+// Photo inputs: the <img class="preview"> and <span class="upload-text"> sit next to the input
+function setPreview(input, src) {
+  const box = input.parentElement;
+  const img = box.querySelector(".preview");
+  img.hidden = !src;
+  if (src) img.src = src; else img.removeAttribute("src");
+  box.querySelector(".upload-text").textContent = src ? "Click to change photo" : "Click to add a photo";
+}
+
+function wirePhotoInput(input, onPhoto) {
+  input.addEventListener("change", async () => {
+    const file = input.files[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      input.value = "";
+      return showToast("Please choose an image file", "error");
+    }
+    try {
+      const src = await resizeImage(file);
+      onPhoto(src);
+      setPreview(input, src);
+    } catch {
+      showToast("Couldn't read that image", "error");
+    }
+  });
+}
+
+// Wraps a click handler so any error becomes a toast instead of a crash
+function safe(fn) {
+  return async (...args) => {
+    try {
+      await fn(...args);
+    } catch (err) {
+      const full = err && err.name === "QuotaExceededError";
+      showToast(full ? "Browser storage is full. Try smaller photos or reset demo data." : err.message, "error");
+    }
+  };
+}
+
+/* ---------- 5. Screens ---------- */
+
+/* Modal */
+function openModal(title, bodyHTML, actions = []) {
+  $("#modalTitle").textContent = title;
+  $("#modalBody").innerHTML = bodyHTML;
+  const box = $("#modalActions");
+  box.innerHTML = "";
+  actions.forEach(a => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn " + (a.className || "btn-ghost");
+    btn.textContent = a.label;
+    btn.addEventListener("click", safe(a.onClick));
+    box.appendChild(btn);
+  });
+  $("#modal").hidden = false;
+  $("#modalBody").querySelector("select, textarea, input")?.focus();
+}
+
+function closeModal() {
+  $("#modal").hidden = true;
+}
+
+/* Navigation */
+const renderers = {
+  dashboard: renderDashboard,
+  reports: () => renderList("reports"),
+  archive: () => renderList("archive"),
+  verify: renderVerify,
+  analytics: renderAnalytics
+};
+
+function buildNav() {
+  $("#nav").innerHTML = ROLES[session.role].nav
+    .map(([view, label]) => `<button class="nav-link" data-nav="${view}">${label}</button>`).join("");
+  $("#roleTag").textContent = ROLES[session.role].label;
+  // Admin has no personal name, so don't repeat the role
+  $("#userName").textContent = session.name === ROLES[session.role].label ? "" : session.name;
+}
+
+function showView(name) {
+  if (!session) name = "login";
+  else if (!ROLES[session.role].nav.some(n => n[0] === name)) name = "dashboard";
+
+  $$(".view").forEach(v => v.classList.toggle("active", v.id === name));
+  $$(".nav-link").forEach(b => b.classList.toggle("active", b.dataset.nav === name));
+  $("#topbar").hidden = !session;
+
+  if (renderers[name]) renderers[name]();
+  if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+// Re-draw whichever section is on screen after data changes
+function refreshCurrentView() {
+  const view = $(".view.active");
+  if (view && renderers[view.id]) renderers[view.id]();
+}
+
+/* Login (demo) */
+function login(role, name) {
+  session = { role, name };
+  storage.writeSession(session);
+  buildNav();
+  showView("dashboard");
+  showToast("Welcome, " + name);
+}
+
+function logout() {
+  session = null;
+  storage.clearSession();
+  showView("login");
+}
+
+/* Dashboards: one function per role, each returns HTML */
+async function renderDashboard() {
+  const all = await api.getReports();
+  const build = { student: studentDashboard, cleaner: cleanerDashboard, admin: adminDashboard }[session.role];
+  $("#dashboardContent").innerHTML = build(all);
+}
+
+// A clickable row used in dashboard lists
+function miniItem(r, buttons = "") {
+  return `
+    <div class="list-item clickable" data-action="details" data-id="${esc(r.id)}">
+      <div>
+        <strong>${esc(r.wasteType)} · ${esc(r.location)}</strong> ${demoTag(r)}
+        <div class="meta">${esc(r.id)} · ${timeAgo(r.createdAt)}</div>
+      </div>
+      <div class="item-right">${statusBadge(r)}${buttons}</div>
+    </div>`;
+}
+
+function studentDashboard(all) {
+  const mine = all.filter(r => r.reportedBy === session.name);
+  const n = (...statuses) => mine.filter(r => statuses.includes(r.status)).length;
+  const recent = [...mine].sort((a, b) => b.createdAt - a.createdAt).slice(0, 5);
+
+  return hero("Hi, " + esc(session.name) + " 👋", "Spotted waste on campus? Report it and follow the cleanup here.",
+      `<button class="btn btn-primary" data-nav="report">Report waste</button>`) + `
+    <div class="stats-grid">
+      ${statCard(mine.length, "My reports", "accent")}
+      ${statCard(n("Submitted"), "Waiting for a cleaner")}
+      ${statCard(n("Assigned", "In Progress", "Awaiting Verification"), "Being handled")}
+      ${statCard(n("Resolved"), "Resolved")}
+    </div>
+    <div class="two-col">
+      <div class="card">
+        <h2>My recent reports</h2>
+        ${recent.length ? recent.map(r => miniItem(r)).join("")
+          : emptyState("📝", "No reports yet", "Your reports will show up here.", `<button class="btn btn-primary btn-sm" data-nav="report">Report waste</button>`)}
+      </div>
+      <div class="card">
+        <h2>How a report moves</h2>
+        <div class="list">
+          <div><strong>1. Submitted</strong><div class="meta">You send the report.</div></div>
+          <div><strong>2. Assigned</strong><div class="meta">The administrator picks a cleaner.</div></div>
+          <div><strong>3. In Progress</strong><div class="meta">The cleaner accepts and cleans.</div></div>
+          <div><strong>4. Awaiting Verification</strong><div class="meta">The administrator checks the work.</div></div>
+          <div><strong>5. Resolved</strong><div class="meta">Approved and moved to the archive.</div></div>
+        </div>
+      </div>
+    </div>`;
+}
+
+function cleanerDashboard(all) {
+  const mine = all.filter(r => r.assignedTo === session.name);
+  const n = (status) => mine.filter(r => r.status === status).length;
+  // Rework tasks first, then newest
+  const todo = mine.filter(r => r.status === "Assigned" || r.status === "In Progress")
+    .sort((a, b) => (!!b.reworkNote - !!a.reworkNote) || b.createdAt - a.createdAt);
+  const waiting = mine.filter(r => r.status === "Awaiting Verification");
+
+  return hero("Hi, " + esc(session.name) + " 👋", todo.length
+      ? "You have " + todo.length + " cleanup task" + (todo.length > 1 ? "s" : "") + " to work on."
+      : "No open tasks right now.") + `
+    <div class="stats-grid">
+      ${statCard(n("Assigned"), "To start", n("Assigned") ? "accent" : "")}
+      ${statCard(n("In Progress"), "In progress")}
+      ${statCard(n("Awaiting Verification"), "Awaiting verification")}
+      ${statCard(n("Resolved"), "Resolved")}
+    </div>
+    <h2 class="section-title">Your tasks</h2>
+    <div class="grid">
+      ${todo.length ? todo.map(reportCard).join("")
+        : emptyState("🧹", "No tasks assigned", "When the administrator assigns you a report, it appears here.")}
+    </div>
+    ${waiting.length ? `<h2 class="section-title">Waiting for administrator verification</h2>
+      <div class="card">${waiting.map(r => miniItem(r)).join("")}</div>` : ""}`;
+}
+
+function adminDashboard(all) {
+  const n = (status) => all.filter(r => r.status === status).length;
+  const needs = all.filter(r => r.status === "Submitted");
+  const awaiting = all.filter(r => r.status === "Awaiting Verification");
+  const attention = needs.length + awaiting.length;
+
+  return hero("Administrator dashboard", attention
+      ? attention + " report" + (attention > 1 ? "s need" : " needs") + " your attention."
+      : "Everything is up to date.",
+      `<button class="btn btn-primary" data-nav="reports">View all reports</button>`) + `
+    <div class="stats-grid">
+      ${statCard(all.length, "Total reports", "accent")}
+      ${statCard(needs.length, "Need a cleaner", needs.length ? "alert" : "")}
+      ${statCard(awaiting.length, "Awaiting verification")}
+      ${statCard(n("Resolved"), "Resolved")}
+    </div>
+    ${hotspotBanner(hotspotsOf(all))}
+    <div class="two-col">
+      <div class="card">
+        <h2>Needs a cleaner</h2>
+        ${needs.length ? needs.map(r => miniItem(r, `<button class="btn btn-dark btn-sm" data-action="assign" data-id="${esc(r.id)}">Assign</button>`)).join("")
+          : emptyState("🎉", "All assigned", "New reports will appear here.")}
+      </div>
+      <div class="card">
+        <h2>Awaiting verification</h2>
+        ${awaiting.length ? awaiting.map(r => miniItem(r)).join("")
+          : emptyState("✅", "Nothing to review", "Completed cleanups will appear here.")}
+      </div>
+    </div>`;
+}
+
+/* Report cards and lists */
+// Buttons shown on a report card for the current role
+function cardActions(r) {
+  if (session.role === "admin") {
+    if (r.status === "Submitted") return [{ action: "assign", label: "Assign", cls: "btn-dark" }];
+    if (r.status === "Assigned") return [{ action: "assign", label: "Reassign", cls: "btn-ghost" }];
+    if (r.status === "Awaiting Verification") return [{ action: "details", label: "Review", cls: "btn-dark" }];
+  }
+  if (session.role === "cleaner") {
+    if (r.status === "Assigned") return [{ action: "start", label: "Accept & start", cls: "btn-primary" }];
+    if (r.status === "In Progress") return [{ action: "complete", label: "Complete cleanup", cls: "btn-primary" }];
+  }
+  return [];
+}
+
+function reportCard(r) {
+  const pic = r.status === "Resolved" ? (r.afterImage || r.image) : r.image;
+  const buttons = cardActions(r)
+    .map(a => `<button class="btn ${a.cls} btn-sm" data-action="${a.action}" data-id="${esc(r.id)}">${a.label}</button>`).join("");
+  const people = [session.role === "admin" && "Reported by " + r.reportedBy, r.assignedTo && "Cleaner: " + r.assignedTo]
+    .filter(Boolean).join(" · ");
+  return `
+    <article class="card report-card" data-action="details" data-id="${esc(r.id)}" tabindex="0">
+      ${pic ? `<img src="${pic}" alt="Photo of the report">` : ""}
+      <div class="meta">${esc(r.id)} · ${timeAgo(r.createdAt)} ${demoTag(r)}</div>
+      <strong>${esc(r.wasteType)} · ${esc(r.location)}</strong>
+      ${placeOf(r) ? `<div class="meta">${esc(placeOf(r))}</div>` : ""}
+      <p>${esc(r.description.length > 90 ? r.description.slice(0, 90) + "…" : r.description)}</p>
+      ${r.reworkNote && r.status === "In Progress" ? `<div class="note warn"><strong>Rework requested:</strong> ${esc(r.reworkNote)}</div>` : ""}
+      ${stepsHTML(r.status)}
+      <div class="badges">${statusBadge(r)} ${severityBadge(r)}</div>
+      ${people ? `<div class="meta">${esc(people)}</div>` : ""}
+      ${buttons ? `<div class="card-actions">${buttons}</div>` : ""}
+    </article>`;
+}
+
+// p is "reports" (active) or "archive" (resolved)
+async function renderList(p) {
+  const archived = p === "archive";
+  const inScope = scopeReports(await api.getReports()).filter(r => (r.status === "Resolved") === archived);
+
+  if (!archived) {
+    const admin = session.role === "admin";
+    $("#reportsTitle").textContent = admin ? "All active reports" : "My reports";
+    $("#reportsSub").textContent = admin
+      ? "Search, filter, assign cleaners and open any report."
+      : "Track where each of your reports is in the cleanup process.";
+  }
+
+  const query = $(`#${p}Search`).value.trim().toLowerCase();
+  const location = $(`#${p}Location`).value;
+  const waste = $(`#${p}Waste`).value;
+  const status = $(`#${p}Status`)?.value || "";
+
+  const list = inScope
+    .filter(r =>
+      (!location || r.location === location) && (!waste || r.wasteType === waste) && (!status || r.status === status) &&
+      (!query || [r.id, r.location, r.floor, r.room, r.landmark, r.wasteType, r.description, r.assignedTo, r.reportedBy]
+        .join(" ").toLowerCase().includes(query)))
+    .sort((a, b) => b.createdAt - a.createdAt);
+
+  let html;
+  if (list.length) html = list.map(reportCard).join("");
+  else if (inScope.length) html = emptyState("🔍", "No matches", "Try a different search or filter.");
+  else if (archived) html = emptyState("🗄️", "Archive is empty", "Resolved reports are kept here.");
+  else if (session.role === "student") {
+    html = emptyState("📝", "No active reports", "Report waste and it will appear here.",
+      `<button class="btn btn-primary btn-sm" data-nav="report">Report waste</button>`);
+  } else html = emptyState("📋", "No active reports", "New reports will appear here.");
+  $(`#${p}List`).innerHTML = html;
+}
+
+/* Administrator: verify cleanups */
+async function renderVerify() {
+  const list = (await api.getReports()).filter(r => r.status === "Awaiting Verification");
+  $("#verifyList").innerHTML = list.length ? list.map(r => `
+    <div class="card verify-card">
+      <div class="verify-head">
+        <div>
+          <strong>${esc(r.wasteType)} · ${esc(r.location)}</strong> ${demoTag(r)}
+          <div class="meta">${esc(r.id)} · Cleaner: ${esc(r.assignedTo)} · ${esc(placeOf(r) || "no extra location details")}</div>
+        </div>
+        ${severityBadge(r)}
+      </div>
+      ${photosHTML(r, true)}
+      <div class="note"><strong>Cleaner's note:</strong> ${esc(r.completionNote || "None")}</div>
+      <div class="card-actions">
+        <button class="btn btn-primary btn-sm" data-action="approve" data-id="${esc(r.id)}">Approve</button>
+        <button class="btn btn-danger btn-sm" data-action="rework" data-id="${esc(r.id)}">Request rework</button>
+        <button class="btn btn-ghost btn-sm" data-action="details" data-id="${esc(r.id)}">Details</button>
+      </div>
+    </div>`).join("")
+    : emptyState("✅", "Nothing to review", "When a cleaner finishes a task, it will appear here for your approval.");
+}
+
+/* Administrator: analytics (uses the real stored reports only) */
+async function renderAnalytics() {
+  const all = await api.getReports();
+  const total = all.length;
+  const done = all.filter(r => r.status === "Resolved").length;
+  const hotspots = hotspotsOf(all);
+  const byCount = (a, b) => b.count - a.count;
+  const percent = total ? Math.round((done / total) * 100) : 0;
+
+  $("#analyticsStats").innerHTML =
+    statCard(total, "Total reports", "accent") +
+    statCard(total - done, "Pending (not yet resolved)") +
+    statCard(done, "Completed (resolved)") +
+    statCard(hotspots.length, "Hotspots", hotspots.length ? "alert" : "");
+
+  $("#hotspotBanner").innerHTML = hotspotBanner(hotspots);
+  $("#categoryStats").innerHTML = barRows(countBy(all, "wasteType", WASTE_TYPES).sort(byCount));
+  $("#locationStats").innerHTML = barRows(countBy(all, "location", LOCATIONS).sort(byCount), l => l.count >= HOTSPOT_LIMIT);
+  $("#statusStats").innerHTML = barRows(countBy(all, "status", STATUSES));
+  $("#resolutionRing").innerHTML = `
+    <div class="ring-wrap">
+      <div class="ring" style="--pct:${percent}"><div class="ring-inner">${percent}%</div></div>
+      <p class="meta">${done} of ${total} reports resolved</p>
+    </div>`;
+
+  const demoCount = all.filter(r => r.isDemo).length;
+  $("#analyticsNote").textContent = "Based on the " + total + " report" + (total === 1 ? "" : "s") +
+    " saved in this browser" + (demoCount ? " (" + demoCount + " are sample demo reports, marked 'Demo')" : "") +
+    ". Hotspot = " + HOTSPOT_LIMIT + " or more reports at one location, archived reports included.";
+  animateBars("#analytics");
+}
+
+/* Report details modal (all roles) */
+async function openDetails(id) {
+  const r = (await api.getReports()).find(x => x.id === id);
+  if (!r) return;
+
+  const rows = [
+    ["Report ID", r.id], ["Location", r.location], ["Floor", r.floor], ["Room", r.room], ["Landmark", r.landmark],
+    ["Waste category", r.wasteType], ["Reported by", r.reportedBy], ["Reported", fmtDate(r.createdAt)],
+    ["Cleaner", r.assignedTo], ["Cleaner's note", r.completionNote], ["Resolved", r.resolvedAt && fmtDate(r.resolvedAt)]
+  ].filter(row => row[1]);
+
+  const body = `
+    ${photosHTML(r)}
+    <div class="badges" style="margin-bottom:0.75rem">${statusBadge(r)} ${severityBadge(r)} ${demoTag(r)}</div>
+    ${stepsHTML(r.status)}
+    <p style="margin-top:0.75rem">${esc(r.description)}</p>
+    ${r.reworkNote && r.status === "In Progress" ? `<div class="note warn"><strong>Rework requested:</strong> ${esc(r.reworkNote)}</div>` : ""}
+    ${rows.map(([label, value]) => `<div class="list-item"><span class="meta">${label}</span><span>${esc(value)}</span></div>`).join("")}
+    <h3>Progress</h3>
+    <ol class="timeline">
+      ${r.history.map(h => `<li><strong>${esc(h.text)}</strong><div class="meta">${esc(h.by)} · ${fmtDate(h.at)}</div></li>`).join("")}
+    </ol>`;
+
+  const actions = [{ label: "Close", onClick: closeModal }];
+  if (session.role === "admin" && r.status === "Awaiting Verification") {
+    actions.push({ label: "Request rework", className: "btn-danger", onClick: () => openReworkModal(id) });
+    actions.push({ label: "Approve", className: "btn-primary", onClick: () => doApprove(id) });
+  } else {
+    cardActions(r).filter(a => a.action !== "details").forEach(a => {
+      actions.push({ label: a.label, className: a.cls, onClick: () => handleAction(a.action, id) });
+    });
+  }
+  openModal("Report details", body, actions);
+}
+
+/* Administrator: assign a cleaner */
+async function openAssignModal(id) {
+  const all = await api.getReports();
+  const r = all.find(x => x.id === id);
+  const active = (name) => all.filter(x => x.assignedTo === name && x.status !== "Resolved").length;
+
+  openModal(r.status === "Assigned" ? "Reassign cleaner" : "Assign cleaner", `
+    <p class="meta">${esc(r.id)} · ${esc(r.wasteType)} at ${esc(r.location)}</p>
+    <label class="field"><span>Cleaner</span>
+      <select id="assignSelect">
+        ${CLEANERS.map(c => `<option value="${c}" ${c === r.assignedTo ? "selected" : ""}>${c} (${active(c)} active)</option>`).join("")}
+      </select>
+    </label>`, [
+    { label: "Cancel", onClick: closeModal },
+    { label: "Assign", className: "btn-primary", onClick: async () => {
+        const cleaner = $("#assignSelect").value;
+        await api.assignReport(id, cleaner, session.name);
+        closeModal();
+        showToast(id + " assigned to " + cleaner);
+        refreshCurrentView();
+    } }
+  ]);
+}
+
+/* Cleaner: accept and start */
+async function doStart(id) {
+  await api.startTask(id, session.name);
+  closeModal();
+  showToast("Task " + id + " started");
+  refreshCurrentView();
+}
+
+/* Cleaner: finish a task with before/after photos */
+async function openCompleteModal(id) {
+  const r = (await api.getReports()).find(x => x.id === id);
+  const photos = { before: r.beforeImage, after: null };
+  const photoField = (inputId, label) => `
+    <div class="field"><span>${label}</span>
+      <label class="upload" for="${inputId}">
+        <input type="file" id="${inputId}" accept="image/*" hidden>
+        <span class="upload-text">Click to add a photo</span>
+        <img class="preview" alt="${label}" hidden>
+      </label>
+    </div>`;
+
+  openModal("Complete cleanup", `
+    <p class="meta">${esc(r.id)} · ${esc(r.wasteType)} at ${esc(r.location)}</p>
+    ${r.reworkNote ? `<div class="note warn" style="margin-bottom:0.75rem"><strong>Rework requested:</strong> ${esc(r.reworkNote)}</div>` : ""}
+    <div class="form">
+      ${photoField("beforePhoto", "Before photo (optional)")}
+      ${photoField("afterPhoto", "After photo *")}
+      <label class="field"><span>Completion note *</span>
+        <textarea id="completionNote" rows="3" placeholder="What did you clean up?"></textarea>
+      </label>
+    </div>`, [
+    { label: "Cancel", onClick: closeModal },
+    { label: "Submit for verification", className: "btn-primary", onClick: async () => {
+        await api.completeTask(id, session.name, {
+          beforeImage: photos.before, afterImage: photos.after, note: $("#completionNote").value.trim()
+        });
+        closeModal();
+        showToast(id + " sent to the administrator for verification");
+        refreshCurrentView();
+    } }
+  ]);
+
+  wirePhotoInput($("#beforePhoto"), (src) => photos.before = src);
+  wirePhotoInput($("#afterPhoto"), (src) => photos.after = src);
+  if (photos.before) setPreview($("#beforePhoto"), photos.before);
+}
+
+/* Administrator: approve or request rework */
+async function doApprove(id) {
+  await api.approveReport(id, session.name);
+  closeModal();
+  showToast(id + " approved and moved to the archive");
+  refreshCurrentView();
+}
+
+function openReworkModal(id) {
+  openModal("Request rework", `
+    <p class="meta">The report goes back to the cleaner as In Progress.</p>
+    <label class="field"><span>What needs to be redone? *</span>
+      <textarea id="reworkReason" rows="3" placeholder="e.g. Corner near the bin is still dirty"></textarea>
+    </label>`, [
+    { label: "Cancel", onClick: closeModal },
+    { label: "Send back", className: "btn-danger", onClick: async () => {
+        await api.requestRework(id, session.name, $("#reworkReason").value.trim());
+        closeModal();
+        showToast(id + " sent back for rework");
+        refreshCurrentView();
+    } }
+  ]);
+}
+
+// Every button with data-action="..." data-id="..." ends up here
+const handleAction = safe(async (action, id) => {
+  if (action === "details") await openDetails(id);
+  else if (action === "assign") await openAssignModal(id);
+  else if (action === "start") await doStart(id);
+  else if (action === "complete") await openCompleteModal(id);
+  else if (action === "approve") await doApprove(id);
+  else if (action === "rework") openReworkModal(id);
+});
+
+/* Student: report form */
+let currentImage = null; // the photo chosen in the report form
+
+function clearFieldError(field) {
+  field.classList.remove("invalid");
+  field.querySelector(".error-text")?.remove();
+}
+
+function validateForm() {
+  const required = {
+    location: "Choose a location",
+    wasteType: "Choose a waste category",
+    severity: "Choose how severe it is",
+    description: "Describe what you saw"
+  };
+  if ($("#location").value === "Other campus area") required.landmark = "Add a landmark so cleaners can find it";
+
+  let firstInvalid = null;
+  ["location", "wasteType", "severity", "description", "landmark"].forEach(id => {
+    const input = $("#" + id);
+    const field = input.closest(".field");
+    clearFieldError(field);
+    if (required[id] && !input.value.trim()) {
+      field.classList.add("invalid");
+      field.insertAdjacentHTML("beforeend", `<span class="error-text">${required[id]}</span>`);
+      firstInvalid = firstInvalid || input;
+    }
+  });
+  if (firstInvalid) firstInvalid.focus();
+  return !firstInvalid;
+}
+
+function setupReportForm() {
+  const form = $("#reportForm");
+  wirePhotoInput($("#image"), (src) => currentImage = src);
+
+  // Clear an error as soon as the person fixes it
+  form.addEventListener("input", (e) => {
+    const field = e.target.closest(".field");
+    if (field) clearFieldError(field);
+    if (e.target.id === "location") clearFieldError($("#landmark").closest(".field"));
+  });
+
+  form.addEventListener("reset", () => {
+    currentImage = null;
+    setPreview($("#image"), null);
+    $$("#reportForm .field").forEach(clearFieldError);
+  });
+
+  form.addEventListener("submit", safe(async (e) => {
+    e.preventDefault();
+    if (!validateForm()) throw new Error("Please fill in the highlighted fields");
+    const report = await api.createReport({
+      location: $("#location").value,
+      floor: $("#floor").value.trim(),
+      room: $("#room").value.trim(),
+      landmark: $("#landmark").value.trim(),
+      wasteType: $("#wasteType").value,
+      severity: $("#severity").value,
+      description: $("#description").value.trim(),
+      image: currentImage
+    }, session);
+    form.reset();
+    showToast("Report " + report.id + " submitted");
+    showView("reports");
+  }));
+}
+
+/* Demo data reset */
+function openResetModal() {
+  openModal("Reset demo data?",
+    `<p>These tools only affect reports saved in this browser.</p>
+     <p class="meta">"Restore sample data" replaces everything with the 8 demo reports.
+     "Delete all reports" leaves the app empty, so you can start fresh.</p>`, [
+    { label: "Cancel", onClick: closeModal },
+    { label: "Delete all reports", className: "btn-danger", onClick: async () => {
+        await api.deleteAllReports();
+        closeModal(); refreshCurrentView(); showToast("All reports deleted");
+    } },
+    { label: "Restore sample data", className: "btn-dark", onClick: async () => {
+        await api.resetDemoData();
+        closeModal(); refreshCurrentView(); showToast("Sample data restored");
+    } }
+  ]);
+}
+
+/* ---------- Start ---------- */
+function setupEvents() {
+  // Navigation: works for buttons added later too (event delegation)
+  document.addEventListener("click", (e) => {
+    const nav = e.target.closest("[data-nav]");
+    if (nav) { e.preventDefault(); showView(nav.dataset.nav); return; }
+    const act = e.target.closest("[data-action]");
+    if (act) handleAction(act.dataset.action, act.dataset.id);
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeModal();
+    if (e.key === "Enter" && e.target.matches(".report-card")) handleAction("details", e.target.dataset.id);
+  });
+  window.addEventListener("hashchange", () => showView(location.hash.slice(1)));
+
+  // Modal and footer
+  $("#modalClose").addEventListener("click", closeModal);
+  $("#modal").addEventListener("click", (e) => { if (e.target.id === "modal") closeModal(); });
+  $("#resetBtn").addEventListener("click", openResetModal);
+  $("#logoutBtn").addEventListener("click", logout);
+
+  // Demo login forms
+  $("#studentLogin").addEventListener("submit", (e) => {
+    e.preventDefault();
+    login("student", $("#studentName").value.trim().slice(0, 30) || "Demo Student");
+  });
+  $("#cleanerLogin").addEventListener("submit", (e) => { e.preventDefault(); login("cleaner", $("#cleanerSelect").value); });
+  $("#adminLogin").addEventListener("submit", (e) => { e.preventDefault(); login("admin", "Administrator"); });
+
+  // Search and filters re-draw their list
+  ["reports", "archive"].forEach(p => {
+    $$(`#${p} .toolbar input, #${p} .toolbar select`).forEach(el => el.addEventListener("input", () => renderList(p)));
+  });
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  // Fill every dropdown from the constants at the top of this file
+  fillSelect("#cleanerSelect", CLEANERS);
+  fillSelect("#location", LOCATIONS);
+  fillSelect("#wasteType", WASTE_TYPES);
+  fillSelect("#severity", SEVERITIES);
+  ["reports", "archive"].forEach(p => {
+    fillSelect(`#${p}Location`, LOCATIONS);
+    fillSelect(`#${p}Waste`, WASTE_TYPES);
+  });
+  fillSelect("#reportsStatus", STATUSES.filter(s => s !== "Resolved")); // resolved reports live in the archive
+
+  setupEvents();
+  setupReportForm();
+
+  session = storage.readSession();
+  if (session) buildNav();
+  showView(location.hash.slice(1) || "dashboard");
+});
+
+</script>
+</body>
+</html>
