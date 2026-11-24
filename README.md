@@ -43,3 +43,8 @@ g++ cleanup.cpp main.cpp reports.cpp -o campusvise
 
 Currently under development.
 
+## Feedback & Contributions
+
+Have suggestions, found a bug, or want to improve CAMPuVISE?
+
+Feel free to open an Issue on GitHub. Feedback and suggestions are welcome!
