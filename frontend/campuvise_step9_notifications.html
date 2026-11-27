@@ -87,6 +87,20 @@ html[data-theme="dark"] .environment-notice { background: var(--surface); color:
 html[data-theme="dark"] .stat-card.accent { background: var(--lime); color: #0c3220; }
 html[data-theme="dark"] .stat-card.accent .stat-value, html[data-theme="dark"] .stat-card.accent .stat-label { color: #0c3220; }
 
+/* Step 9: notification panel */
+.notification-wrap{position:relative;display:flex;justify-content:flex-end;padding:.5rem 1rem}
+.notification-bell{position:relative;border:1px solid var(--border);background:var(--surface);color:var(--text);border-radius:999px;padding:.55rem .8rem;cursor:pointer;font-weight:700}
+.notification-count{display:inline-flex;align-items:center;justify-content:center;min-width:1.25rem;height:1.25rem;border-radius:999px;background:#dc2626;color:white;font-size:.72rem;margin-left:.35rem}
+.notification-panel{position:absolute;right:1rem;top:calc(100% - .2rem);z-index:50;width:min(360px,calc(100vw - 2rem));background:var(--paper);color:var(--ink);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:1rem;display:none}
+.notification-panel.open{display:block;animation:noticePop .16s ease-out}
+.notification-panel h3{margin:.1rem 0 .7rem}
+.notification-item{padding:.7rem .5rem;border-bottom:1px solid var(--line);font-size:.9rem}
+.notification-item:last-child{border-bottom:0}
+.notification-item strong{display:block;margin-bottom:.2rem}
+.notification-actions{display:flex;justify-content:space-between;gap:.5rem;margin-top:.5rem}
+.notification-actions button{cursor:pointer;border:1px solid var(--line);background:var(--surface);color:var(--text);padding:.4rem .6rem;border-radius:8px}
+@keyframes noticePop{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:translateY(0)}}
+html[data-theme="dark"] .notification-panel{background:var(--paper);color:var(--ink)}
 /* ===== App shell ===== */
 .app { display: flex; min-height: 100vh; }
 .main-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
@@ -581,6 +595,16 @@ input[type="search"] {
     </div>
     <div class="environment-notice" id="environmentNotice" role="status" aria-live="polite">
       <span class="notice-label">🌍 ENVIRONMENT FACT</span><span id="environmentFact">Small actions add up to cleaner campuses.</span>
+    </div>
+    <div class="notification-wrap">
+      <button class="notification-bell" id="notificationBell" type="button" aria-expanded="false" aria-controls="notificationPanel">🔔 Notices <span class="notification-count" id="notificationCount">3</span></button>
+      <section class="notification-panel" id="notificationPanel" aria-label="Notifications">
+        <h3>📬 Campus notices</h3>
+        <div class="notification-item"><strong>🌱 Eco tip</strong>Separate recyclable waste before disposal.</div>
+        <div class="notification-item"><strong>🧹 Cleanup reminder</strong>Check pending cleanup reports on your dashboard.</div>
+        <div class="notification-item"><strong>📢 Demo notice</strong>This panel shows sample notifications.</div>
+        <div class="notification-actions"><button type="button" id="markNoticesRead">Mark as read</button><button type="button" id="closeNotices">Close</button></div>
+      </section>
     </div>
 
     <main class="container">
@@ -1818,6 +1842,15 @@ function setupEnvironmentFact() {
   if (target) target.textContent = fact;
 }
 
+function setupNotifications() {
+  const bell = $("#notificationBell"), panel = $("#notificationPanel"), count = $("#notificationCount");
+  const close = () => { panel.classList.remove("open"); bell.setAttribute("aria-expanded", "false"); };
+  bell.addEventListener("click", () => { const opened = panel.classList.toggle("open"); bell.setAttribute("aria-expanded", String(opened)); });
+  $("#closeNotices").addEventListener("click", close);
+  $("#markNoticesRead").addEventListener("click", () => { count.textContent = "0"; count.style.display = "none"; showToast("Notices marked as read"); close(); });
+  document.addEventListener("click", (e) => { if (!e.target.closest(".notification-wrap")) close(); });
+}
+
 function setupTheme() {
   const btn = $("#themeToggle");
   const apply = (dark) => { document.documentElement.dataset.theme = dark ? "dark" : "light"; btn.textContent = dark ? "☀️ Light" : "🌙 Dark"; btn.setAttribute("aria-label", dark ? "Switch to light mode" : "Switch to dark mode"); };
@@ -1876,6 +1909,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   setupEnvironmentFact();
   setupTheme();
+  setupNotifications();
   setupEvents();
   setupReportForm();
 
