@@ -15,7 +15,12 @@ std::string saveImage(int id,const std::string& bytes,const std::string& name){
  fs::create_directories("uploads"); auto path="uploads/report_"+std::to_string(id)+extensionOf(name);
  std::ofstream out(path,std::ios::binary); if(!out) return {}; out.write(bytes.data(),bytes.size()); return out?path:"";
 }
+std::string saveImage(int id,const std::string& variant,const std::string& bytes,const std::string& name){
+ fs::create_directories("uploads"); auto path="uploads/report_"+std::to_string(id)+"_"+variant+extensionOf(name);
+ std::ofstream out(path,std::ios::binary); if(!out) return {}; out.write(bytes.data(),bytes.size()); return out?path:"";
+}
 std::string getImagePath(int id){ if(!fs::exists("uploads"))return {}; for(auto& p:fs::directory_iterator("uploads")){auto n=p.path().filename().string(); if(n.rfind("report_"+std::to_string(id)+".",0)==0)return p.path().string();} return {}; }
+std::string getImagePath(int id,const std::string& variant){ if(variant.empty())return getImagePath(id); if(!fs::exists("uploads"))return {}; for(auto& p:fs::directory_iterator("uploads")){auto n=p.path().filename().string(); if(n.rfind("report_"+std::to_string(id)+"_"+variant+".",0)==0)return p.path().string();} return {}; }
 bool imageExists(int id){return !getImagePath(id).empty();}
-bool deleteImage(int id){auto p=getImagePath(id);return p.empty()||fs::remove(p);}
+bool deleteImage(int id){ if(!fs::exists("uploads"))return true; bool ok=true; auto prefix="report_"+std::to_string(id); for(auto& p:fs::directory_iterator("uploads")){auto n=p.path().filename().string(); if(n.rfind(prefix+".",0)==0||n.rfind(prefix+"_",0)==0)ok=fs::remove(p.path())&&ok;} return ok; }
 }

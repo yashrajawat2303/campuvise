@@ -590,7 +590,7 @@ input[type="search"] {
     <!-- Always visible: this is a demo -->
     <div class="demo-banner">
       <span data-icon="info"></span>
-      Demo mode · demo login only · reports are saved in this browser, not on a server
+      Demo login only · reports are saved on the CAMPuVISE server
       <button class="theme-toggle" id="themeToggle" type="button" aria-label="Switch to dark mode" title="Toggle dark mode">🌙 Dark</button>
     </div>
     <div class="environment-notice" id="environmentNotice" role="status" aria-live="polite">
@@ -655,7 +655,7 @@ input[type="search"] {
           </form>
         </div>
 
-        <p class="demo-note">This is a demo login: there are no passwords or real accounts. Everything is stored only in this browser.</p>
+        <p class="demo-note">This demo uses no passwords or real accounts. Your demo login stays in this browser; reports are stored on the server.</p>
       </section>
 
       <!-- Dashboard (content depends on the role) -->
@@ -793,7 +793,7 @@ input[type="search"] {
     </main>
 
     <footer class="footer">
-      CAMPuVISE · demo frontend, browser-only storage ·
+      CAMPuVISE · demo login · server-backed reports ·
       <button class="link-btn" id="resetBtn">Reset demo data</button>
     </footer>
   </div>
@@ -814,16 +814,12 @@ input[type="search"] {
 
 <script>
 /* ===== CAMPuVISE – script.js =====
-   DEMO FRONTEND: the login is a demo (no passwords) and all data is saved
-   in this browser's localStorage. Nothing is sent to a server.
+   Demo login/session remain in this browser. Reports are stored by the API.
 
    The file has 5 parts:
    1. Constants        4. Helpers
-   2. Storage          5. Screens (UI) and event handling
-   3. api (report rules)
-
-   To connect a real backend later, only parts 2 and 3 need to change:
-   replace the inside of each api function with a fetch() call. */
+   2. Session storage  5. Screens (UI) and event handling
+   3. API requests */
 
 /* ---------- 1. Constants ---------- */
 const LOCATIONS = ["Building 1", "Building 2", "Canteen", "Amphitheatre", "Auditorium", "Other campus area"];
@@ -854,21 +850,12 @@ const ROLES = {
   admin: { label: "Administrator", nav: [["dashboard", "Dashboard"], ["reports", "Reports"], ["verify", "Verify"], ["analytics", "Analytics"], ["archive", "Archive"]] }
 };
 
-const REPORTS_KEY = "campuvise_v2_reports";
 const SESSION_KEY = "campuvise_v2_session";
 
 let session = null; // { role, name } of the person using the demo
 
-/* ---------- 2. Storage (browser only) ----------
-   The only place that touches localStorage. */
+/* ---------- 2. Session storage (browser only) ---------- */
 const storage = {
-  readReports() {
-    const raw = localStorage.getItem(REPORTS_KEY);
-    return raw ? JSON.parse(raw) : null;
-  },
-  writeReports(list) {
-    localStorage.setItem(REPORTS_KEY, JSON.stringify(list));
-  },
   readSession() {
     try {
       const s = JSON.parse(localStorage.getItem(SESSION_KEY));
@@ -879,112 +866,99 @@ const storage = {
   clearSession() { localStorage.removeItem(SESSION_KEY); }
 };
 
-/* ---------- 3. api: report operations and workflow rules ----------
-   No HTML in here. Each function returns a Promise so it can later become
-   a fetch() call (for example POST /api/reports) without changing the screens.
-   Note: a real backend must also check the user's role; this demo does not. */
+/* ---------- 3. API: reports live on the C++ server ---------- */
+async function apiRequest(path, options = {}) {
+  let response;
+  try { response = await fetch(path, { ...options, headers: { Accept: "application/json", ...(options.headers || {}) } }); }
+  catch { throw new Error("Couldn't reach the CAMPuVISE server. Check that it is running and try again."); }
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || `The server returned HTTP ${response.status}`);
+  return result;
+}
+
+function reportIdNumber(id) { return String(id).replace(/^CV-/, ""); }
+function appendFormValue(form, key, value) { if (value !== undefined && value !== null) form.append(key, String(value)); }
+async function appendPhoto(form, key, dataUrl) {
+  if (!dataUrl) return;
+  const response = await fetch(dataUrl);
+  const blob = await response.blob();
+  const ext = (blob.type.split("/")[1] || "jpg").replace("jpeg", "jpg");
+  form.append(key, blob, `${key}.${ext}`);
+}
+function reportForm(data, reportedBy) {
+  const form = new FormData();
+  ["location", "floor", "room", "landmark", "wasteType", "severity", "description"].forEach(k => appendFormValue(form, k, data[k]));
+  appendFormValue(form, "reportedBy", reportedBy);
+  appendFormValue(form, "isDemo", data.isDemo ? "true" : "false");
+  return form;
+}
+async function postAction(path, values = {}) {
+  const form = new FormData();
+  Object.entries(values).forEach(([key, value]) => appendFormValue(form, key, value));
+  return apiRequest(path, { method: "POST", body: form });
+}
 const api = {
-  async getReports() {
-    let list = storage.readReports();
-    if (!list) {
-      list = sampleReports();
-      storage.writeReports(list);
-    }
-    return list;
-  },
+  async getReports() { return apiRequest("/api/reports"); },
 
   // Student submits a new report
   async createReport(data, user) {
     if (!data.location || !data.wasteType || !data.severity || !data.description) {
       throw new Error("Please fill in all required fields");
     }
-    const reports = await api.getReports();
-    const now = Date.now();
-    const report = {
-      id: nextId(reports),
-      location: data.location, floor: data.floor, room: data.room, landmark: data.landmark,
-      wasteType: data.wasteType, severity: data.severity, description: data.description,
-      image: data.image || null, beforeImage: null, afterImage: null,
-      status: "Submitted", reportedBy: user.name, assignedTo: "",
-      completionNote: "", reworkNote: "",
-      createdAt: now, updatedAt: now, resolvedAt: null, isDemo: false,
-      history: [{ text: "Report submitted", by: user.name, at: now }]
-    };
-    reports.unshift(report);
-    storage.writeReports(reports);
-    return report;
+    const form = reportForm(data, user.name);
+    await appendPhoto(form, "image", data.image);
+    return apiRequest("/api/reports", { method: "POST", body: form });
   },
 
   // Administrator assigns (or reassigns) a cleaner
   async assignReport(id, cleaner, adminName) {
-    return edit(id, (r) => {
-      if (!CLEANERS.includes(cleaner)) throw new Error("Choose a cleaner");
-      if (r.status === "Submitted") {
-        changeStatus(r, "Assigned", adminName, "Assigned to " + cleaner);
-      } else if (r.status === "Assigned") {
-        addHistory(r, "Reassigned to " + cleaner, adminName);
-      } else {
-        throw new Error("Only reports that haven't started can be assigned");
-      }
-      r.assignedTo = cleaner;
-    });
+    if (!CLEANERS.includes(cleaner)) throw new Error("Choose a cleaner");
+    return postAction("/api/reports/assign", { id: reportIdNumber(id), worker: cleaner, actor: adminName });
   },
 
   // Cleaner accepts and starts an assigned task
   async startTask(id, cleanerName) {
-    return edit(id, (r) => {
-      if (r.assignedTo !== cleanerName) throw new Error("This task is not assigned to you");
-      changeStatus(r, "In Progress", cleanerName, "Cleaning started");
-    });
+    return postAction(`/api/reports/${reportIdNumber(id)}/start`, { actor: cleanerName });
   },
 
   // Cleaner submits finished work for verification
-  async completeTask(id, cleanerName, { beforeImage, afterImage, note }) {
-    return edit(id, (r) => {
-      if (r.assignedTo !== cleanerName) throw new Error("This task is not assigned to you");
-      if (!afterImage) throw new Error("Add an 'after' photo");
-      if (!note) throw new Error("Add a completion note");
-      r.beforeImage = beforeImage || r.beforeImage;
-      r.afterImage = afterImage;
-      r.completionNote = note;
-      r.reworkNote = "";
-      changeStatus(r, "Awaiting Verification", cleanerName, "Submitted for verification");
-    });
+  async completeTask(id, cleanerName, { beforeImage, afterImage, note, allowMissingAfter = false }) {
+    if (!afterImage && !allowMissingAfter) throw new Error("Add an 'after' photo");
+    if (!note) throw new Error("Add a completion note");
+    const form = new FormData(); appendFormValue(form, "actor", cleanerName); appendFormValue(form, "note", note);
+    await appendPhoto(form, "beforeImage", beforeImage); await appendPhoto(form, "afterImage", afterImage);
+    return apiRequest(`/api/reports/${reportIdNumber(id)}/complete`, { method: "POST", body: form });
   },
 
   // Administrator approves: report becomes Resolved (archived)
   async approveReport(id, adminName) {
-    return edit(id, (r) => {
-      changeStatus(r, "Resolved", adminName, "Approved and archived");
-      r.resolvedAt = Date.now();
-    });
+    return postAction(`/api/reports/${reportIdNumber(id)}/approve`, { actor: adminName });
   },
 
   // Administrator sends it back: report returns to In Progress
   async requestRework(id, adminName, reason) {
-    return edit(id, (r) => {
-      if (!reason) throw new Error("Explain what needs to be redone");
-      r.reworkNote = reason;
-      r.afterImage = null;
-      changeStatus(r, "In Progress", adminName, "Rework requested: " + reason);
-    });
+    if (!reason) throw new Error("Explain what needs to be redone");
+    return postAction(`/api/reports/${reportIdNumber(id)}/rework`, { actor: adminName, reason });
   },
 
-  // Demo tools
-  async resetDemoData() { storage.writeReports(sampleReports()); },
-  async deleteAllReports() { storage.writeReports([]); }
+  // Demo tools still act on the server's report list.
+  async resetDemoData() {
+    await api.deleteAllReports();
+    for (const sample of sampleReports()) {
+      const created = await api.createReport(sample, { name: sample.reportedBy });
+      if (sample.status === "Submitted") continue;
+      await api.assignReport(created.id, sample.assignedTo || CLEANERS[0], "Administrator");
+      if (["In Progress", "Awaiting Verification", "Resolved"].includes(sample.status)) {
+        await api.startTask(created.id, sample.assignedTo || CLEANERS[0]);
+      }
+      if (["Awaiting Verification", "Resolved"].includes(sample.status)) {
+        await api.completeTask(created.id, sample.assignedTo || CLEANERS[0], { note: sample.completionNote || "Demo cleanup completed", allowMissingAfter: true });
+      }
+      if (sample.status === "Resolved") await api.approveReport(created.id, "Administrator");
+    }
+  },
+  async deleteAllReports() { return apiRequest("/api/reports/delete-all", { method: "POST" }); }
 };
-
-// Load one report, let `change` modify it, then save everything
-async function edit(id, change) {
-  const reports = await api.getReports();
-  const report = reports.find(r => r.id === id);
-  if (!report) throw new Error("Report not found");
-  change(report);
-  report.updatedAt = Date.now();
-  storage.writeReports(reports);
-  return report;
-}
 
 function addHistory(report, text, by) {
   report.history.push({ text, by, at: Date.now() });
@@ -1203,7 +1177,7 @@ function animateBars(containerSelector) {
   }, 30);
 }
 
-// Shrink photos so they fit in localStorage
+// Shrink photos before uploading them to the server
 function resizeImage(file, maxSize = 700) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -1317,7 +1291,7 @@ function showView(name) {
   $$(".nav-link").forEach(b => b.classList.toggle("active", b.dataset.nav === name));
   $("#topbar").hidden = !session;
 
-  if (renderers[name]) renderers[name]();
+  if (renderers[name]) renderers[name]().catch(handleLoadError);
   if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -1325,7 +1299,16 @@ function showView(name) {
 // Re-draw whichever section is on screen after data changes
 function refreshCurrentView() {
   const view = $(".view.active");
-  if (view && renderers[view.id]) renderers[view.id]();
+  if (view && renderers[view.id]) renderers[view.id]().catch(handleLoadError);
+}
+
+function handleLoadError(error) {
+  const message = error && error.message ? error.message : "Couldn't load reports from the server.";
+  showToast(message, "error");
+  const active = $(".view.active");
+  if (!active) return;
+  const target = active.querySelector("#dashboardContent, .grid, #analyticsStats");
+  if (target) target.innerHTML = emptyState("⚠️", "Server unavailable", esc(message));
 }
 
 /* Login (demo) */
@@ -1564,7 +1547,7 @@ async function renderVerify() {
     : emptyState("✅", "Nothing to review", "When a cleaner finishes a task, it will appear here for your approval.");
 }
 
-/* Administrator: analytics (uses the real stored reports only) */
+/* Administrator: analytics (uses server reports only) */
 async function renderAnalytics() {
   const all = await api.getReports();
   const total = all.length;
@@ -1591,7 +1574,7 @@ async function renderAnalytics() {
 
   const demoCount = all.filter(r => r.isDemo).length;
   $("#analyticsNote").textContent = "Based on the " + total + " report" + (total === 1 ? "" : "s") +
-    " saved in this browser" + (demoCount ? " (" + demoCount + " are sample demo reports, marked 'Demo')" : "") +
+    " saved on the server" + (demoCount ? " (" + demoCount + " are sample demo reports, marked 'Demo')" : "") +
     ". Hotspot = " + HOTSPOT_LIMIT + " or more reports at one location, archived reports included.";
   animateBars("#analytics");
 }
@@ -1808,7 +1791,7 @@ function setupReportForm() {
 /* Demo data reset */
 function openResetModal() {
   openModal("Reset demo data?",
-    `<p>These tools only affect reports saved in this browser.</p>
+    `<p>These tools affect reports saved on the server.</p>
      <p class="meta">"Restore sample data" replaces everything with the 8 demo reports.
      "Delete all reports" leaves the app empty, so you can start fresh.</p>`, [
     { label: "Cancel", onClick: closeModal },

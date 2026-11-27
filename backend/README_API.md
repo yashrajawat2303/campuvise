@@ -1,18 +1,10 @@
-# CAMPuVISE API (starter)
+# CAMPuVISE API
 
-This is an initial local API layer around the text-file report store. Existing console files are preserved.
+This local API serves the frontend and stores reports in `reports.txt`.
 
-## Dependencies
+## Build and run
 
-- C++17 compiler
-- cpp-httplib header (`httplib.h`), available via package manager
-- Linux: CMake and pthreads
-
-On Arch Linux, install: `sudo pacman -S cmake gcc cpp-httplib`
-
-## Build
-
-Copy/install `httplib.h` so the compiler can find it, then:
+Requires C++17, cpp-httplib, CMake, and pthreads.
 
 ```bash
 cmake -S . -B build
@@ -20,18 +12,22 @@ cmake --build build
 ./build/campuvise-server
 ```
 
-Server binds to localhost port 8080.
+The server listens on `127.0.0.1:8080`; opening `/` serves the frontend.
 
-## Endpoints
-- `GET /api/reports`
-- `POST /api/reports` form fields: `location`, `wasteType`, `severity`, `description`, optional multipart `image`
-- `POST /api/reports/verify` form field `id`
-- `POST /api/reports/assign` form fields `id`, `worker`
-- `POST /api/reports/complete` form field `id`
-- `DELETE /api/reports/<id>`
-- `GET /api/images/<id>`
+## Report routes
 
-Workflow: Pending -> Verified -> Assigned -> Completed.
+- `GET /api/reports` returns the server report list.
+- `POST /api/reports` accepts multipart fields `location`, `floor`, `room`, `landmark`, `wasteType`, `severity`, `description`, and `reportedBy`, plus optional image file `image`. `isDemo` is optional. It returns the created report with its `CV-<number>` ID.
+- `POST /api/reports/assign` accepts `id`, `worker`, and `actor`.
+- `POST /api/reports/<id>/start` accepts `actor`.
+- `POST /api/reports/<id>/complete` accepts `actor`, `note`, and optional `beforeImage` and `afterImage` files.
+- `POST /api/reports/<id>/approve` accepts `actor`.
+- `POST /api/reports/<id>/rework` accepts `actor` and `reason`.
+- `POST /api/reports/delete-all` removes all reports.
+- `DELETE /api/reports/<id>` removes one report.
+- Compatibility routes `POST /api/reports/verify` and `POST /api/reports/complete` remain available for the original API clients.
+- `GET /api/images/<id>`, `GET /api/images/<id>/before`, and `GET /api/images/<id>/after` serve uploaded photos.
 
-## Notes
-This is a classroom/demo starter, not a production-ready service. It binds only to loopback and has no authentication, authorization, rate limits, or robust validation yet. Do not expose it to the internet or use real personal data. Text file writes are not concurrency-safe. Image uploads are limited by request size and extension, but MIME/content verification should be added before production use.
+Report statuses match the frontend: `Submitted`, `Assigned`, `In Progress`, `Awaiting Verification`, and `Resolved`. The versioned, percent-encoded pipe-separated store reads earlier six-to-eight-column rows. Its first ID, status, and worker columns remain readable by the existing console tools.
+
+The role login remains a frontend demo and is not server authentication. The API binds to loopback and has no authorization or production-grade concurrency protection; keep it on a trusted local machine.
