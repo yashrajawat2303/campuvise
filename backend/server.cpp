@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -13,6 +14,7 @@
 using namespace std;
 namespace {
 using Row = vector<string>;
+mutex reportsMutex;
 constexpr size_t FIELD_COUNT = 21;
 enum Field { ID, LOCATION, WASTE, SEVERITY, DESCRIPTION, REPORT_STATUS, ASSIGNED, IMAGE,
              FLOOR, ROOM, LANDMARK, REPORTED_BY, BEFORE_IMAGE, AFTER_IMAGE,
@@ -85,8 +87,21 @@ vector<Row> load() {
     }
     return rows;
 }
-void store(const vector<Row>& rows) {
-    ofstream file("reports.txt", ios::trunc);
+bool atomicWrite(const string& path, const string& content) {
+    const string temporaryPath = path + ".tmp";
+    ofstream file(temporaryPath, ios::binary | ios::trunc);
+    if (!file) return false;
+    file.write(content.data(), static_cast<streamsize>(content.size()));
+    file.flush();
+    if (!file) return false;
+    file.close();
+    if (!file) return false;
+    error_code error;
+    filesystem::rename(temporaryPath, path, error);
+    return !error;
+}
+bool store(const vector<Row>& rows) {
+    ostringstream content;
     for (const auto& source : rows) {
         Row row = source; while (row.size() < FIELD_COUNT) row.emplace_back();
         // Keep the original console program's ID, status and worker columns readable.
@@ -94,11 +109,12 @@ void store(const vector<Row>& rows) {
         else if (row[REPORT_STATUS] == "Awaiting Verification") row[REPORT_STATUS] = "Verified";
         else if (row[REPORT_STATUS] == "Resolved") row[REPORT_STATUS] = "Completed";
         for (size_t i = 0; i < FIELD_COUNT; ++i) {
-            if (i) file << '|';
-            file << encode(row[i]);
+            if (i) content << '|';
+            content << encode(row[i]);
         }
-        file << "|V2\n";
+        content << "|V2\n";
     }
+    return atomicWrite("reports.txt", content.str());
 }
 long long nowMs() {
     return chrono::duration_cast<chrono::milliseconds>(chrono::system_clock::now().time_since_epoch()).count();
@@ -161,9 +177,15 @@ Row* findReport(vector<Row>& rows, int id) {
 void sendReport(httplib::Response& response, const Row& row) {
     response.set_content(reportJson(row), "application/json");
 }
-int nextID() {
-    int id = 1001; ifstream input("next_id.txt"); if (input) input >> id;
-    ofstream output("next_id.txt"); output << id + 1; return id;
+bool nextID(const vector<Row>& rows, int& id) {
+    int candidate = 1001;
+    ifstream input("next_id.txt");
+    int persisted = 0;
+    if (input >> persisted && persisted > 0) candidate = persisted;
+    int maxExisting = 0;
+    for (const auto& row : rows) maxExisting = max(maxExisting, idFrom(row[ID]));
+    id = max(candidate, maxExisting + 1);
+    return atomicWrite("next_id.txt", to_string(id + 1));
 }
 string imageUpload(const httplib::Request& request, const string& field, int id, const string& fallback, const string& variant = "") {
     if (!request.form.has_file(field)) return fallback;
@@ -184,6 +206,7 @@ void runServer() {
         stringstream content; content << file.rdbuf(); response.set_content(content.str(), "text/html");
     });
     server.Get("/api/reports", [](const httplib::Request&, httplib::Response& response) {
+        lock_guard<mutex> lock(reportsMutex);
         auto rows = load(); string body = "[";
         for (size_t i = 0; i < rows.size(); ++i) { if (i) body += ','; body += reportJson(rows[i]); }
         response.set_content(body + "]", "application/json");
@@ -191,23 +214,43 @@ void runServer() {
     server.Post("/api/reports", [](const httplib::Request& request, httplib::Response& response) {
         string location = param(request, "location"), waste = param(request, "wasteType");
         string severity = param(request, "severity"), description = param(request, "description");
+        string reporter = param(request, "reportedBy");
         if (location.empty() || waste.empty() || severity.empty() || description.empty()) {
             jsonError(response, 400, "location, wasteType, severity and description are required"); return;
         }
-        int id = nextID(); long long now = nowMs(); Row row = blankRow();
+        if (severity != "Low" && severity != "Medium" && severity != "High") {
+            jsonError(response, 400, "severity must be Low, Medium or High"); return;
+        }
+        if (reporter.empty()) { jsonError(response, 400, "reportedBy is required"); return; }
+        if (location == "Other campus area" && param(request, "landmark").empty()) {
+            jsonError(response, 400, "landmark is required for Other campus area"); return;
+        }
+        if (request.form.has_file("image")) {
+            const auto photo = request.form.get_file("image");
+            if (!images::isSupportedImage(photo.filename, photo.content)) {
+                jsonError(response, 400, "The report photo must be a valid JPEG, PNG, GIF or WebP image"); return;
+            }
+        }
+        lock_guard<mutex> lock(reportsMutex);
+        auto rows = load(); int id = 0;
+        if (!nextID(rows, id)) { jsonError(response, 500, "Could not reserve a report ID"); return; }
+        long long now = nowMs(); Row row = blankRow();
         row[ID] = to_string(id); row[LOCATION] = location; row[WASTE] = waste; row[SEVERITY] = severity;
         row[DESCRIPTION] = description; row[REPORT_STATUS] = "Submitted"; row[ASSIGNED] = "";
         row[IMAGE] = imageUpload(request, "image", id, ""); row[FLOOR] = param(request, "floor");
         if (request.form.has_file("image") && row[IMAGE].empty()) { jsonError(response, 500, "Could not save the report photo"); return; }
         row[ROOM] = param(request, "room"); row[LANDMARK] = param(request, "landmark");
-        row[REPORTED_BY] = param(request, "reportedBy"); row[CREATED_AT] = row[UPDATED_AT] = to_string(now);
+        row[REPORTED_BY] = reporter; row[CREATED_AT] = row[UPDATED_AT] = to_string(now);
         row[IS_DEMO] = param(request, "isDemo") == "true" ? "true" : "false";
         addHistory(row, "Report submitted", row[REPORTED_BY]);
-        auto rows = load(); rows.insert(rows.begin(), row); store(rows);
+        rows.insert(rows.begin(), row);
+        if (!store(rows)) { jsonError(response, 500, "Could not save the report. Existing reports were left unchanged."); return; }
         response.status = 201; sendReport(response, row);
     });
     server.Post(R"(/api/reports/(CV-)?(\d+)/(start|complete|approve|rework))", [](const httplib::Request& request, httplib::Response& response) {
-        int id = idFrom(request.matches[2]); string action = request.matches[3]; auto rows = load(); Row* row = findReport(rows, id);
+        int id = idFrom(request.matches[2]); string action = request.matches[3];
+        lock_guard<mutex> lock(reportsMutex);
+        auto rows = load(); Row* row = findReport(rows, id);
         if (!row) { jsonError(response, 404, "report not found"); return; }
         string actor = param(request, "actor");
         if (action == "start") {
@@ -217,6 +260,16 @@ void runServer() {
             string note = param(request, "note");
             if ((*row)[REPORT_STATUS] != "In Progress" || (*row)[ASSIGNED] != actor) { jsonError(response, 400, "This task is not assigned to you or is not in progress"); return; }
             if (note.empty()) { jsonError(response, 400, "Add a completion note"); return; }
+            if (!request.form.has_file("afterImage") && (*row)[IS_DEMO] != "true") {
+                jsonError(response, 400, "Add an after photo before submitting for verification"); return;
+            }
+            for (const string field : {"beforeImage", "afterImage"}) {
+                if (!request.form.has_file(field)) continue;
+                const auto photo = request.form.get_file(field);
+                if (!images::isSupportedImage(photo.filename, photo.content)) {
+                    jsonError(response, 400, "Cleanup photos must be valid JPEG, PNG, GIF or WebP images"); return;
+                }
+            }
             if (request.form.has_file("beforeImage")) {
                 (*row)[BEFORE_IMAGE] = imageUpload(request, "beforeImage", id, "", "before");
                 if ((*row)[BEFORE_IMAGE].empty()) { jsonError(response, 500, "Could not save the before photo"); return; }
@@ -235,40 +288,60 @@ void runServer() {
             (*row)[REPORT_STATUS] = "In Progress"; (*row)[REWORK_NOTE] = reason; (*row)[AFTER_IMAGE].clear(); (*row)[RESOLVED_AT].clear();
             addHistory(*row, "Rework requested: " + reason, actor);
         }
-        touch(*row); Row updated = *row; store(rows); sendReport(response, updated);
+        touch(*row); Row updated = *row;
+        if (!store(rows)) { jsonError(response, 500, "Could not save the report update. Existing reports were left unchanged."); return; }
+        if (action == "complete") {
+            images::deleteImageVariant(id, "before", updated[BEFORE_IMAGE]);
+            images::deleteImageVariant(id, "after", updated[AFTER_IMAGE]);
+        } else if (action == "rework") {
+            images::deleteImageVariant(id, "after");
+        }
+        sendReport(response, updated);
     });
     server.Post("/api/reports/assign", [](const httplib::Request& request, httplib::Response& response) {
         int id = idFrom(param(request, "id")); string worker = param(request, "worker"), actor = param(request, "actor");
+        const vector<string> cleaners = {"Ramesh", "Suresh", "Anita", "Priya"};
+        if (find(cleaners.begin(), cleaners.end(), worker) == cleaners.end()) { jsonError(response, 400, "Choose a valid cleaner"); return; }
+        lock_guard<mutex> lock(reportsMutex);
         auto rows = load(); Row* row = findReport(rows, id);
         if (!row) { jsonError(response, 404, "report not found"); return; }
         if (worker.empty() || ((*row)[REPORT_STATUS] != "Submitted" && (*row)[REPORT_STATUS] != "Assigned" && (*row)[REPORT_STATUS] != "Awaiting Verification")) { jsonError(response, 400, "Only unstarted reports can be assigned"); return; }
         string event = (*row)[REPORT_STATUS] == "Submitted" ? "Assigned to " + worker : "Reassigned to " + worker;
         (*row)[REPORT_STATUS] = "Assigned"; (*row)[ASSIGNED] = worker; touch(*row); addHistory(*row, event, actor);
-        Row updated = *row; store(rows); sendReport(response, updated);
+        Row updated = *row;
+        if (!store(rows)) { jsonError(response, 500, "Could not save the assignment. Existing reports were left unchanged."); return; }
+        sendReport(response, updated);
     });
     server.Post("/api/reports/delete-all", [](const httplib::Request&, httplib::Response& response) {
+        lock_guard<mutex> lock(reportsMutex);
         auto rows = load();
+        if (!store({})) { jsonError(response, 500, "Could not clear the report list. Existing reports were left unchanged."); return; }
         for (const auto& row : rows) images::deleteImage(idFrom(row[ID]));
-        store({}); response.set_content("{\"deleted\":true}", "application/json");
+        response.set_content("{\"deleted\":true}", "application/json");
     });
     server.Delete(R"(/api/reports/(CV-)?(\d+))", [](const httplib::Request& request, httplib::Response& response) {
-        int id = idFrom(request.matches[2]); auto rows = load(); size_t before = rows.size();
+        int id = idFrom(request.matches[2]); lock_guard<mutex> lock(reportsMutex); auto rows = load(); size_t before = rows.size();
         rows.erase(remove_if(rows.begin(), rows.end(), [&](const Row& row) { return idFrom(row[ID]) == id; }), rows.end());
         if (rows.size() == before) { jsonError(response, 404, "report not found"); return; }
-        store(rows); images::deleteImage(id); response.set_content("{\"deleted\":true}", "application/json");
+        if (!store(rows)) { jsonError(response, 500, "Could not delete the report. Existing reports were left unchanged."); return; }
+        images::deleteImage(id); response.set_content("{\"deleted\":true}", "application/json");
     });
     server.Post("/api/reports/verify", [](const httplib::Request& request, httplib::Response& response) {
-        int id = idFrom(param(request, "id")); auto rows = load(); Row* row = findReport(rows, id);
+        int id = idFrom(param(request, "id")); lock_guard<mutex> lock(reportsMutex); auto rows = load(); Row* row = findReport(rows, id);
         if (!row || ((*row)[REPORT_STATUS] != "Awaiting Verification" && (*row)[REPORT_STATUS] != "Submitted")) { jsonError(response, 404, "report not found or not awaiting verification"); return; }
         (*row)[REPORT_STATUS] = "Awaiting Verification"; addHistory(*row, "Report verified", param(request, "actor"));
-        touch(*row); Row updated = *row; store(rows); sendReport(response, updated);
+        touch(*row); Row updated = *row;
+        if (!store(rows)) { jsonError(response, 500, "Could not save the verification. Existing reports were left unchanged."); return; }
+        sendReport(response, updated);
     });
     server.Post("/api/reports/complete", [](const httplib::Request& request, httplib::Response& response) {
-        int id = idFrom(param(request, "id")); auto rows = load(); Row* row = findReport(rows, id);
+        int id = idFrom(param(request, "id")); lock_guard<mutex> lock(reportsMutex); auto rows = load(); Row* row = findReport(rows, id);
         if (!row || (*row)[REPORT_STATUS] != "Assigned") { jsonError(response, 400, "Report must be assigned"); return; }
         (*row)[REPORT_STATUS] = "Resolved"; (*row)[RESOLVED_AT] = to_string(nowMs());
         addHistory(*row, "Cleanup completed", param(request, "actor")); touch(*row);
-        Row updated = *row; store(rows); sendReport(response, updated);
+        Row updated = *row;
+        if (!store(rows)) { jsonError(response, 500, "Could not save the completion. Existing reports were left unchanged."); return; }
+        sendReport(response, updated);
     });
     server.Get(R"(/api/images/(\d+)(/(before|after))?)", [](const httplib::Request& request, httplib::Response& response) {
         int id = stoi(request.matches[1]); string variant = request.matches[3]; string path = images::getImagePath(id, variant);

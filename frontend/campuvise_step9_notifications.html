@@ -296,6 +296,9 @@ html[data-theme="dark"] .notification-panel{background:var(--paper);color:var(--
 
 /* ===== Empty states ===== */
 .empty { grid-column: 1 / -1; text-align: center; padding: 2.25rem 1rem; color: var(--muted); }
+.loading-state { grid-column: 1 / -1; display: flex; align-items: center; justify-content: center; gap: .65rem; min-height: 7rem; padding: 1.5rem; color: var(--muted); }
+.loading-state::before { content: ""; width: 1rem; height: 1rem; border: 2px solid var(--line-strong); border-top-color: var(--forest); border-radius: 50%; animation: loadingSpin .8s linear infinite; }
+@keyframes loadingSpin { to { transform: rotate(360deg); } }
 .empty-icon { width: 68px; height: 68px; margin: 0 auto 0.85rem; border-radius: 50%; display: grid; place-items: center; background: var(--mint); font-size: 1.9rem; }
 .empty strong { display: block; color: var(--forest-900); font-size: 1.1rem; }
 .empty p { margin: 0.3rem 0 1rem; }
@@ -597,12 +600,12 @@ input[type="search"] {
       <span class="notice-label">🌍 ENVIRONMENT FACT</span><span id="environmentFact">Small actions add up to cleaner campuses.</span>
     </div>
     <div class="notification-wrap">
-      <button class="notification-bell" id="notificationBell" type="button" aria-expanded="false" aria-controls="notificationPanel">🔔 Notices <span class="notification-count" id="notificationCount">3</span></button>
-      <section class="notification-panel" id="notificationPanel" aria-label="Notifications">
-        <h3>📬 Campus notices</h3>
+      <button class="notification-bell" id="notificationBell" type="button" aria-expanded="false" aria-controls="notificationPanel">🔔 Notices <span class="notification-count" id="notificationCount" hidden>0</span></button>
+      <section class="notification-panel" id="notificationPanel" aria-label="Notifications" aria-live="polite">
+        <h3>📬 Updates for you</h3>
+        <div id="reportNotifications"><div class="notification-item">Sign in to see report updates for your role.</div></div>
         <div class="notification-item"><strong>🌱 Eco tip</strong>Separate recyclable waste before disposal.</div>
-        <div class="notification-item"><strong>🧹 Cleanup reminder</strong>Check pending cleanup reports on your dashboard.</div>
-        <div class="notification-item"><strong>📢 Demo notice</strong>This panel shows sample notifications.</div>
+        <div class="notification-item"><strong>📢 Demo notice</strong>This is a sample campus notice.</div>
         <div class="notification-actions"><button type="button" id="markNoticesRead">Mark as read</button><button type="button" id="closeNotices">Close</button></div>
       </section>
     </div>
@@ -853,6 +856,8 @@ const ROLES = {
 const SESSION_KEY = "campuvise_v2_session";
 
 let session = null; // { role, name } of the person using the demo
+let activeReportNotices = [];
+const readReportNoticeKeys = new Set();
 
 /* ---------- 2. Session storage (browser only) ---------- */
 const storage = {
@@ -898,7 +903,11 @@ async function postAction(path, values = {}) {
   return apiRequest(path, { method: "POST", body: form });
 }
 const api = {
-  async getReports() { return apiRequest("/api/reports"); },
+  async getReports() {
+    const reports = await apiRequest("/api/reports");
+    if (session) updateReportNotifications(reports);
+    return reports;
+  },
 
   // Student submits a new report
   async createReport(data, user) {
@@ -1025,6 +1034,7 @@ function esc(text) {
 }
 
 function timeAgo(timestamp) {
+  if (timestamp === null || timestamp === undefined || timestamp === "" || !Number.isFinite(Number(timestamp))) return "Date unavailable";
   const minutes = Math.floor((Date.now() - timestamp) / 60000);
   if (minutes < 1) return "just now";
   if (minutes < 60) return minutes + " min ago";
@@ -1035,6 +1045,7 @@ function timeAgo(timestamp) {
 }
 
 function fmtDate(timestamp) {
+  if (timestamp === null || timestamp === undefined || timestamp === "" || !Number.isFinite(Number(timestamp))) return "Date unavailable";
   return new Date(timestamp).toLocaleString([], { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
@@ -1236,7 +1247,7 @@ function safe(fn) {
       await fn(...args);
     } catch (err) {
       const full = err && err.name === "QuotaExceededError";
-      showToast(full ? "Browser storage is full. Try smaller photos or reset demo data." : err.message, "error");
+      showToast(full ? "Browser storage is full. Try smaller photos." : (err?.message || "Something went wrong. Please try again."), "error");
     }
   };
 }
@@ -1274,6 +1285,12 @@ const renderers = {
   analytics: renderAnalytics
 };
 
+function setLoadingState(name) {
+  const targets = { dashboard: "#dashboardContent", reports: "#reportsList", archive: "#archiveList", verify: "#verifyList", analytics: "#analyticsStats" };
+  const target = targets[name] && $(targets[name]);
+  if (target) target.innerHTML = '<div class="loading-state" role="status">Loading reports…</div>';
+}
+
 function buildNav() {
   $("#nav").innerHTML = ROLES[session.role].nav
     .map(([view, label]) => `<button class="nav-link" data-nav="${view}" title="${label}">${icon(view)}<span>${label}</span></button>`).join("");
@@ -1291,7 +1308,7 @@ function showView(name) {
   $$(".nav-link").forEach(b => b.classList.toggle("active", b.dataset.nav === name));
   $("#topbar").hidden = !session;
 
-  if (renderers[name]) renderers[name]().catch(handleLoadError);
+  if (renderers[name]) { setLoadingState(name); renderers[name]().catch(handleLoadError); }
   if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
@@ -1299,7 +1316,7 @@ function showView(name) {
 // Re-draw whichever section is on screen after data changes
 function refreshCurrentView() {
   const view = $(".view.active");
-  if (view && renderers[view.id]) renderers[view.id]().catch(handleLoadError);
+  if (view && renderers[view.id]) { setLoadingState(view.id); renderers[view.id]().catch(handleLoadError); }
 }
 
 function handleLoadError(error) {
@@ -1307,7 +1324,7 @@ function handleLoadError(error) {
   showToast(message, "error");
   const active = $(".view.active");
   if (!active) return;
-  const target = active.querySelector("#dashboardContent, .grid, #analyticsStats");
+  const target = active.querySelector("#dashboardContent, .grid, .verify-grid, #analyticsStats");
   if (target) target.innerHTML = emptyState("⚠️", "Server unavailable", esc(message));
 }
 
@@ -1830,8 +1847,41 @@ function setupNotifications() {
   const close = () => { panel.classList.remove("open"); bell.setAttribute("aria-expanded", "false"); };
   bell.addEventListener("click", () => { const opened = panel.classList.toggle("open"); bell.setAttribute("aria-expanded", String(opened)); });
   $("#closeNotices").addEventListener("click", close);
-  $("#markNoticesRead").addEventListener("click", () => { count.textContent = "0"; count.style.display = "none"; showToast("Notices marked as read"); close(); });
+  $("#markNoticesRead").addEventListener("click", () => {
+    activeReportNotices.forEach(n => readReportNoticeKeys.add(n.key));
+    updateNoticePanel(); showToast("Notices marked as read"); close();
+  });
   document.addEventListener("click", (e) => { if (!e.target.closest(".notification-wrap")) close(); });
+}
+
+function updateReportNotifications(reports) {
+  if (!session) { activeReportNotices = []; updateNoticePanel(); return; }
+  const notices = [];
+  const add = (r, kind, title, detail) => notices.push({ key: `${session.role}:${session.name}:${r.id}:${kind}:${r.status}`, title, detail });
+  for (const r of reports) {
+    if (session.role === "admin") {
+      if (r.status === "Submitted") add(r, "submitted", "New report", `${r.wasteType} · ${r.location} · ${r.reportedBy}`);
+      if (r.status === "Awaiting Verification") add(r, "verification", "Cleanup ready for verification", `${r.id} · ${r.location}`);
+    } else if (session.role === "cleaner" && r.assignedTo === session.name) {
+      if (r.status === "Assigned") add(r, "assigned", "New cleanup task", `${r.id} · ${r.wasteType} at ${r.location}`);
+      if (r.status === "In Progress" && r.reworkNote) add(r, "rework", "Rework requested", `${r.id} · ${r.reworkNote}`);
+    } else if (session.role === "student" && r.reportedBy === session.name && r.status !== "Submitted") {
+      add(r, "status", `Report ${r.status.toLowerCase()}`, `${r.id} · ${r.wasteType} at ${r.location}`);
+    }
+  }
+  activeReportNotices = notices;
+  updateNoticePanel();
+}
+
+function updateNoticePanel() {
+  const count = $("#notificationCount"), target = $("#reportNotifications");
+  if (!count || !target) return;
+  const unread = activeReportNotices.filter(n => !readReportNoticeKeys.has(n.key));
+  count.textContent = String(unread.length);
+  count.hidden = unread.length === 0;
+  if (!session) target.innerHTML = '<div class="notification-item">Sign in to see report updates for your role.</div>';
+  else if (!activeReportNotices.length) target.innerHTML = '<div class="notification-item">No report updates for this account yet.</div>';
+  else target.innerHTML = activeReportNotices.map(n => `<div class="notification-item"><strong>${esc(n.title)}</strong><div class="meta">${esc(n.detail)}</div></div>`).join("");
 }
 
 function setupTheme() {
@@ -1870,8 +1920,12 @@ function setupEvents() {
   $("#adminLogin").addEventListener("submit", (e) => { e.preventDefault(); login("admin", "Administrator"); });
 
   // Search and filters re-draw their list
+  const searchTimers = {};
   ["reports", "archive"].forEach(p => {
-    $$(`#${p} .toolbar input, #${p} .toolbar select`).forEach(el => el.addEventListener("input", () => renderList(p)));
+    $$(`#${p} .toolbar input, #${p} .toolbar select`).forEach(el => el.addEventListener("input", () => {
+      clearTimeout(searchTimers[p]);
+      searchTimers[p] = setTimeout(() => renderList(p).catch(handleLoadError), 180);
+    }));
   });
 }
 
