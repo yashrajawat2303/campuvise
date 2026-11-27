@@ -1,0 +1,3 @@
+/home/chimney/projects/campuvise/backend/build/CMakeFiles/campuvise-server.dir
+/home/chimney/projects/campuvise/backend/build/CMakeFiles/edit_cache.dir
+/home/chimney/projects/campuvise/backend/build/CMakeFiles/rebuild_cache.dir

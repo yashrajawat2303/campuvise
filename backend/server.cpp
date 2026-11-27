@@ -17,12 +17,28 @@ static string jsonReports(){auto rs=load();string j="[";for(size_t i=0;i<rs.size
 static int nextID(){int id=1001;ifstream f("next_id.txt");if(f)f>>id;ofstream o("next_id.txt");o<<id+1;return id;}
 void runServer(){
  httplib::Server server; server.set_payload_max_length(8*1024*1024);
+ server.Get("/", [](const httplib::Request&, httplib::Response& r) {
+     ifstream f("../frontend/campuvise_step9_notifications.html");
+     if (!f) {
+         r.status = 500;
+         r.set_content("Frontend file not found", "text/plain");
+         return;
+     }
+
+     stringstream buffer;
+     buffer << f.rdbuf();
+     r.set_content(buffer.str(), "text/html");
+ });
  server.Get("/api/reports",[](const httplib::Request&,httplib::Response&r){r.set_content(jsonReports(),"application/json");});
  server.Post("/api/reports",[](const httplib::Request&q,httplib::Response&r){
  auto field=[&](const char*n){return q.has_param(n)?q.get_param_value(n):string();};
  if(field("location").empty()||field("wasteType").empty()||field("description").empty()){r.status=400;r.set_content("{\"error\":\"location, wasteType and description required\"}","application/json");return;}
  int id=nextID();vector<string> p={to_string(id),field("location"),field("wasteType"),field("severity"),field("description"),"Pending","",""};
- if(q.has_file("image")){auto f=q.get_file_value("image");auto path=images::saveImage(id,f.content,f.filename);p[7]=path;}
+ if (q.form.has_file("image")) {
+     auto f = q.form.get_file("image");
+     auto path = images::saveImage(id, f.content, f.filename);
+     p[7] = path;
+ }
  auto rs=load();rs.push_back(p);store(rs);r.status=201;r.set_content("{\"id\":"+to_string(id)+",\"status\":\"Pending\"}","application/json");});
  server.Post("/api/reports/verify",[](const httplib::Request&q,httplib::Response&r){int id=q.has_param("id")?stoi(q.get_param_value("id")):0;auto rs=load();bool ok=false;for(auto&p:rs)if(stoi(p[0])==id&&p[5]=="Pending"){p[5]="Verified";ok=true;}if(ok)store(rs);r.status=ok?200:404;r.set_content(ok?"{\"status\":\"Verified\"}":"{\"error\":\"report not found or not Pending\"}","application/json");});
  server.Post("/api/reports/assign",[](const httplib::Request&q,httplib::Response&r){int id=q.has_param("id")?stoi(q.get_param_value("id")):0;string worker=q.has_param("worker")?q.get_param_value("worker"):"";auto rs=load();bool ok=false;for(auto&p:rs)if(stoi(p[0])==id&&p[5]=="Verified"&&!worker.empty()){p[5]="Assigned";p[6]=worker;ok=true;}if(ok)store(rs);r.status=ok?200:400;r.set_content(ok?"{\"status\":\"Assigned\"}":"{\"error\":\"report must be Verified and worker supplied\"}","application/json");});
