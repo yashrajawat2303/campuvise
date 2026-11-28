@@ -1,50 +1,101 @@
-
 # CAMPuVISE
 
-CAMPuVISE is a student-focused management tool built using C++ to organize and manage student-related records.
+> A campus waste-management and reporting system designed to streamline waste reporting, verification, assignment and status tracking within a campus.
+
+CAMPuVISE is a campus-oriented waste-management platform that connects report submission with administrative verification, staff assignment and notification workflows. The project aims to make campus waste-management requests easier to submit, manage and track through a centralized system.
+
+---
+
+## Overview
+
+CAMPuVISE is being developed to improve the way waste-related issues are reported and handled within a campus environment.
+
+Instead of relying on informal communication, the system is designed around a structured workflow in which reports can be submitted, reviewed, assigned and tracked by the relevant users.
 
 ## Features
 
-- Student record management
-- Record storage using text files
-- Record cleanup functionality
-- Standalone frontend interface
+- **Report Submission** — Submit campus waste-management reports.
+- **Report Verification** — Administrative review and verification of submitted reports.
+- **Staff Assignment** — Assign verified reports to the appropriate cleaning staff.
+- **Status Tracking** — Track report progress through the management workflow.
+- **Role-Based Notifications** — Deliver relevant notifications to students, administrators and cleaning staff.
+- **Backend API** — Frontend-backend communication through an API.
+- **Data Management** — Backend handling of report data.
+
+## Workflow
+
+```mermaid
+flowchart TD
+    A[Student submits report] --> B[Report received]
+    B --> C[Admin reviews report]
+    C --> D{Verified?}
+    D -->|Yes| E[Assign cleaning staff]
+    D -->|No| F[Review / reject]
+    E --> G[Staff receives notification]
+    G --> H[Work on report]
+    H --> I[Status update]
+```
+
+## Architecture
+
+CAMPuVISE is developed using a separate frontend and backend architecture.
+
+| Component | Description |
+|---|---|
+| Frontend | User interface and interaction |
+| Backend | C++ server and API handling |
+| API | Communication between the frontend and backend |
+| Data storage | Backend report-data handling |
+
+## Technology Stack
+
+- **Frontend:** HTML, CSS, JavaScript
+- **Backend:** C++
+- **HTTP/API:** C++ HTTP server with `cpp-httplib`
+- **Development:** Git and GitHub
 
 ## Project Structure
 
 ```text
-campuvise/
+CAMPuVISE/
+├── frontend/
+│   └── User interface files
 ├── backend/
-│   ├── main.cpp
-│   ├── cleanup.cpp
-│   ├── cleanup.h
-│   ├── reports.cpp
-│   ├── reports.h
-│   ├── reports.txt
-│   └── next_id.txt
-└── frontend/
-    └── campuvise-standalone.html
+│   ├── server.cpp
+│   ├── httplib.h
+│   └── images.h
+└── README.md
 ```
 
-## Technologies
+*The directory layout above is illustrative and may not represent the exact current repository structure.*
 
-- C++
-- HTML (standalone frontend)
+## Development Status
 
-## Running the Backend
+CAMPuVISE is currently under active development.
 
-```bash
-cd backend
-g++ cleanup.cpp main.cpp reports.cpp -o campusvise
-./campusvise
-```
+The current development focus includes:
 
-## Status
+- Frontend and backend integration
+- Report submission and retrieval
+- Verification and assignment workflows
+- Role-specific notification logic
+- Testing and debugging the API
+- Improving the overall user experience
 
-Currently under development.
+The project is currently a self-hosted development/demo project and is not yet intended as a production deployment.
 
-## Feedback & Contributions
+## Goals
 
-Have suggestions, found a bug, or want to improve CAMPuVISE?
+- Simplify campus waste reporting.
+- Improve communication between administrators and cleaning staff.
+- Make submitted reports easier to track.
+- Reduce confusion around report assignments and notifications.
+- Build a maintainable and extensible system.
 
-Feel free to open an Issue on GitHub. Feedback and suggestions are welcome!
+## Contributors
+
+Developed as a collaborative student project.
+
+## License
+
+License information has not yet been specified.
